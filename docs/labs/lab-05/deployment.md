@@ -165,6 +165,29 @@ explicit command and database configuration, deploys both public Cloud Run
 services with explicit container ports, aligns the API trusted origin with the
 web URL, and runs public health/readiness smoke checks.
 
+### Repeatable release procedure (AC-L5-07-06)
+
+1. Merge the bounded issue PR into `lab5` after a specific teammate review and
+   passing `test-and-docker` check. Record the issue, PR, review and head SHA.
+2. Open a separate PR from `lab5` into `main`. Ask the other student to review
+   the release diff and the required CI result. Merge only after that review
+   and all required checks pass. Record the release PR and merge commit SHA.
+3. Confirm `CI and Docker` passed on that exact `main` SHA. The `push: main`
+   trigger produces this run; its successful `workflow_run` triggers `deploy.yml`.
+   If a manual workflow dispatch is used, confirm its selected ref and SHA
+   correspond to the reviewed release and that CI passed for that same SHA.
+4. Inspect the deployment run in GitHub Actions. Record its run URL, full image
+   tags, migration job result, both Cloud Run revision names, public web/API
+   URLs, and read-only health/readiness smoke results. Do not report a release
+   complete if migration or smoke test failed.
+5. Compare the full release commit SHA from `main` with the image tags and the
+   image used by each serving Cloud Run revision. Open the public web URL and
+   verify the released change through a synthetic user journey. Record the
+   result in the evidence index (C-06) and Issue #40.
+
+These steps describe the procedure only. No successful GCP release has been
+recorded while project billing/access remains pending.
+
 Required `production` environment variables are `GCP_PROJECT_ID`, `GCP_REGION`,
 `WIF_PROVIDER`, and `WIF_SERVICE_ACCOUNT`. The pre-provisioned runtime service
 account must be `pockit-runner@PROJECT_ID.iam.gserviceaccount.com`, and it needs
