@@ -38,7 +38,10 @@ Topic: 7 — Personal Money and Expense Logging System (Pockit).
 - [PR #57](https://github.com/ovenmakemeheat/Pockit/pull/57) records local
   image build, four migrations, synthetic seed, healthy API/web/DB, and a
   browser journey on source commit `499f02b67c101699a5e302b23fa4adf3fd4e4aa3`.
-  Review and merge are pending; clean-clone full-stack run is still to record.
+  A separate clean checkout first exposed a missing Prisma Client in the image;
+  PR #57 head `42f67d6` generates it during Docker build. The fixed checkout
+  built both images, applied migrations, seeded demo data and served healthy
+  API/web endpoints. Teammate review and merge are pending.
 - [Deployment configuration table](deployment.md) explains environment
   variables and which values must stay secret.
 
