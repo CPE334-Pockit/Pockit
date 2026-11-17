@@ -10,8 +10,8 @@ connection strings, API keys, service-account keys, or other secrets here.
 | --- | --- |
 | Repository | `https://github.com/ovenmakemeheat/Pockit` |
 | Lab 5 staging branch | `lab5` |
-| Current Issue | [#40](https://github.com/ovenmakemeheat/Pockit/issues/40) |
-| Working branch | `lab5-deploy-workflow` |
+| Current Issue | [#41](https://github.com/ovenmakemeheat/Pockit/issues/41) |
+| Working branch | `lab5-final-evidence` |
 | Sprint 1 baseline commit | `e99da77` |
 | GCP project ID | _To be recorded after setup_ |
 | GCP region | _To be recorded after setup_ |
@@ -113,6 +113,10 @@ down`. Remove the volume only when disposable local data may be deleted.
 - Keep this document updated at each Lab 5 lifecycle transition.
 
 ## 6. Planned evidence index
+
+The [Issue #41 evidence index](evidence-index.md) records the actual result,
+tested commit, and remaining proof for each C-01 through C-06 check. A passing
+CI job is not evidence of a public deployment or persistence after a restart.
 
 | Check | Requirement | Artifact/result |
 | --- | --- | --- |
