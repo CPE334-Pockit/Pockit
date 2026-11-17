@@ -13,9 +13,9 @@ connection strings, API keys, service-account keys, or other secrets here.
 | Current Issue | [#41](https://github.com/ovenmakemeheat/Pockit/issues/41) |
 | Working branch | `lab5-final-evidence` |
 | Sprint 1 baseline commit | `e99da77` |
-| GCP project ID | _To be recorded after setup_ |
-| GCP region | _To be recorded after setup_ |
-| Public service URL | _To be recorded after deployment_ |
+| GCP project ID | Pending: Free Trial access problem; university budget arrangement awaited |
+| GCP region | Pending GCP project setup |
+| Public service URL | No deployment yet |
 
 ## 2.1 GCP deployment plan
 

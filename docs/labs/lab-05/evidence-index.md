@@ -5,6 +5,11 @@ only when the linked run or observation proves the required behavior on a
 named commit. Do not insert credentials, billing details, or private financial
 records. Use synthetic demo data for screenshots.
 
+The team reports that GCP setup has not started because its Free Trial access
+failed and university budget arrangements are pending. There is no project ID,
+region, public URL, deployed revision, or cloud persistence result yet. Treat
+C-04 through C-06 as blocked until the funding/access path is confirmed.
+
 ## Verified repository evidence
 
 | Check | Command, run, or link | Actual result | Tested commit | Missing proof |
@@ -32,4 +37,6 @@ records. Use synthetic demo data for screenshots.
 4. Release a reviewed change through `lab5` to `main` and the deployment workflow. Confirm the new service revision and full commit SHA; capture the same record once more.
 5. Collect the failed temporary PR, required-check ruleset, clean-clone Docker run and review links. Add direct links and one- or two-sentence captions to Answer Parts 0–4 in the final PDF.
 
-The lab handout requires a single PDF named `lab5_sec<section>_<group name>.pdf`. Do not present a draft PDF as final submission while C-02 through C-06 remain unverified.
+The requested final filename is `lab5_sec1_PEEEEEEJA.pdf`. Prepare Answer Parts
+0–4 after the missing evidence is captured; do not present a draft PDF as final
+submission while C-02 through C-06 remain unverified.
