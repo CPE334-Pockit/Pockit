@@ -16,18 +16,18 @@ C-04 through C-06 as blocked until the funding/access path is confirmed.
 | --- | --- | --- | --- | --- |
 | C-01 (R-05) | [PR #50](https://github.com/ovenmakemeheat/Pockit/pull/50), [CI run 44025791559](https://github.com/ovenmakemeheat/Pockit/actions/runs/44025791559) | `test-and-docker` passed; teammate reviewed and PR merged into `lab5`. | `3057e867b379b017da5a16110afd869c29a694f9` | None for the passing PR check. |
 | C-02 (R-06) | No failing temporary PR or blocked-merge screenshot linked. | Unverified. | None | Create a normal temporary PR with one intentional failing test; record failed required check and blocked merge, then close without merging. |
-| C-03 (R-01, R-02) | CI run above builds images, but no documented clean-clone local run. `docker info --format '{{.ServerVersion}}'` could not connect to Docker Desktop during the Issue #41 audit. | Unverified for clean clone and running stack. | None | Start Docker Desktop; run clean-clone build, migration, synthetic seed, UI/API smoke and record commands/results. |
+| C-03 (R-01, R-02) | [PR #57](https://github.com/ovenmakemeheat/Pockit/pull/57), [passing CI run 44035896253](https://github.com/ovenmakemeheat/Pockit/actions/runs/44035896253), local `docker compose -p pockit-lab5-audit build`, `up`, `run --rm -w /app server bun run db:migrate:deploy`, local seed, HTTP health/readiness/web checks and browser journey. | Local API/web images built; four migrations applied; three synthetic Users and ten accounts seeded; API ready and web HTTP 200; browser login, finance journey and allocation rejection succeeded. | `499f02b67c101699a5e302b23fa4adf3fd4e4aa3` (local source); `9a51d01a3b3e0032b6c54520abbc5bcff4159ef6` (PR #57 documentation and CI) | PR #57 review/merge pending. Local verification used an existing checkout with ignored synthetic `.env` files; a separate fresh clone executing the full stack has not been recorded. |
 | C-04 (R-03) | No public URL or live user journey linked. | Unverified. | None | Record public web/API URLs and screenshots for login, successful financial action, and rejection with URL visible. |
-| C-05 (R-04) | No before/after restart and redeployment evidence linked. | Unverified. | None | Create recognizable synthetic record; capture before, restart Cloud Run service, capture after; redeploy through workflow and capture after again. Record revision and commit each time. |
+| C-05 (R-04) | Local `docker compose -p pockit-lab5-audit restart server web`, PostgreSQL User count query before/after and `/api/ready`; [PR #57](https://github.com/ovenmakemeheat/Pockit/pull/57). | Local synthetic User count stayed 3 and API reconnected to PostgreSQL after application container restart. No cloud restart/redeploy evidence. | `499f02b67c101699a5e302b23fa4adf3fd4e4aa3` | On GCP, capture the same recognizable financial record before/after application restart and redeployment with URLs, screenshots, revisions and commit. |
 | C-06 (R-07–R-10) | [Deployment workflow](https://github.com/ovenmakemeheat/Pockit/blob/lab5/.github/workflows/deploy.yml) is merged into `lab5`; no release PR into `main` or successful deployment run linked. | Unverified. | None | Link teammate-reviewed release PR, passing CI on `main`, successful deploy run and Cloud Run revision/image matching full release SHA. |
 
 ## Issue #41 acceptance status
 
-- AC-L5-08-01: open — no observed application restart persistence result.
+- AC-L5-08-01: open — local application restart preserved synthetic Users, but the Lab 5 public deployment still needs before/after financial-record evidence.
 - AC-L5-08-02: open — no observed redeployment persistence result.
 - AC-L5-08-03: open — C-02 through C-06 have no complete run/result/commit evidence.
 - AC-L5-08-04: open — deployment and board evidence is incomplete.
-- AC-L5-08-05: open — final PDF requires section/group filename, public URL, release and persistence evidence.
+- AC-L5-08-05: open — final PDF filename is known, but public URL, release and persistence evidence are missing.
 
 ## Capture sequence for the team
 
