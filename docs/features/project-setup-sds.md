@@ -1,6 +1,6 @@
 # Feature-Level SDS: Project Setup (Pre-sprint Foundation)
 
-**Issue:** [#9 — Project Setup](https://github.com/ovenmakemeheat/Pockit/issues/9)
+**Issue:** [#9 — Project Setup](https://github.com/CPE334-Pockit/Pockit/issues/9)
 **Branch:** `feature/project-setup` from `main`; PR #11 targets `main`
 **Status:** Repository/bootstrap foundation for the project; not part of Sprint 1. The issue remains open until its acceptance criteria are verified.
 

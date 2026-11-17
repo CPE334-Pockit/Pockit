@@ -8,12 +8,12 @@ connection strings, API keys, service-account keys, or other secrets here.
 
 | Item | Value |
 | --- | --- |
-| Repository | `https://github.com/ovenmakemeheat/Pockit` |
+| Repository | `https://github.com/CPE334-Pockit/Pockit` |
 | Lab 5 staging branch | `lab5` |
-| Current Issue | [#41](https://github.com/ovenmakemeheat/Pockit/issues/41) |
+| Current Issue | [#41](https://github.com/CPE334-Pockit/Pockit/issues/41) |
 | Working branch | `lab5-final-evidence` |
 | Sprint 1 baseline commit | `e99da77` |
-| GCP project ID | Pending: Free Trial access problem; university budget arrangement awaited |
+| GCP project ID | Pending: Free Trial access problem; team reports TA informed on 2026-11-18 and awaits university budget arrangement |
 | GCP region | Pending GCP project setup |
 | Public service URL | No deployment yet |
 
@@ -50,6 +50,11 @@ Shell. No GCP resource or secret is created by repository tests.
 ## 2. GCP setup evidence
 
 Complete these fields only after checking the Google Cloud Console:
+
+The team reported on 2026-11-18 that it had informed the TA about the Free Trial
+problem and is awaiting a response. This is a team report, not verified TA
+acknowledgement, project access or billing approval. [Issue #35](https://github.com/CPE334-Pockit/Pockit/issues/35)
+tracks the blocker.
 
 | Check | Result/evidence |
 | --- | --- |
@@ -231,6 +236,18 @@ Evidence for Issue #39 must include a normal, non-draft temporary-branch PR with
 one intentionally failing test. Record the failed workflow, the required-check
 indicator, and the disabled merge action. Close that PR without merging it and do
 not alter the released application.
+
+The active [`main-release-gate` ruleset](https://github.com/CPE334-Pockit/Pockit/rules/27470351)
+requires a PR, one approval, the GitHub Actions `test-and-docker` check, and an
+up-to-date branch, with no bypass actors. [PR #63](https://github.com/CPE334-Pockit/Pockit/pull/63)
+was a normal PR from `lab5-merge-gate-demo` to `main` at head
+`198742072b773dde74474c495360ed6ca11c148b`. Its intentionally failing
+test at `apps/server/src/merge-gate-demo.test.ts:4` failed in
+[Actions run 44135270043](https://github.com/CPE334-Pockit/Pockit/actions/runs/44135270043).
+The PR UI showed the check as `Required`, `Merging is blocked`, and a disabled
+merge button. The PR was closed without merging; `main` remained at
+`211bb77fb2a5ccb95027d9d110e0132ff1001918`. This proves the merge gate,
+not GitHub-to-GCP authentication, which still awaits project access.
 
 ## 9. Release workflow
 
