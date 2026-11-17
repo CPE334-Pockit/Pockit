@@ -152,6 +152,27 @@ images from source commit `499f02b67c101699a5e302b23fa4adf3fd4e4aa3`:
 This is local browser and database evidence only. It does not prove the public
 GCP URL or a cloud restart/redeployment.
 
+### Fresh-checkout Docker regression and fix (AC-L5-03-01)
+
+The first separate checkout of `lab5` at
+`3c7a7e9fba6fec20c50a2e504d7e71fbe720c061` failed
+`docker compose build server`: the generated Prisma Client import was missing.
+Earlier CI and workspace builds had generated that ignored directory before
+building the image. Both application Dockerfiles now run `bun run db:generate`
+inside the builder stage after installing dependencies; the build-time local
+environment remains mounted as a BuildKit secret.
+
+With this Dockerfile fix applied to that same clean checkout and only ignored
+synthetic `.env` files added, the isolated `pockit-lab5-clean` Compose project
+passed `docker compose build --quiet` for API and web. Four migrations applied
+using `run --rm -w /app server bun run db:migrate:deploy`; local seed created
+3 synthetic Users and 10 accounts using `run --rm -e NODE_ENV=development
+-w /app server bun run db:seed`. PostgreSQL and API reached healthy state,
+`/api/health` returned `ok`, `/api/ready` returned `db: connected`, and the web
+root returned HTTP 200. Host PostgreSQL used port 15433 to avoid the unrelated
+service on 5432. This result proves the fixed images build and run without a
+pre-generated Prisma Client in the checkout.
+
 Stop the application without deleting the database volume with `docker compose
 down`. Remove the volume only when disposable local data may be deleted.
 
