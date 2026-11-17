@@ -131,6 +131,27 @@ server app and database client, and verifies balances, summaries and history.
 This local restart is not evidence of GCP redeployment or persistence through a
 new Cloud Run revision.
 
+### Local browser journey (AC-L5-03-04)
+
+Using the same isolated Compose stack and synthetic seeded User, the browser
+opened `http://localhost:3001/`, signed in, and reached `/dashboard`. The
+following actions were observed through the live UI on the production-built
+images from source commit `499f02b67c101699a5e302b23fa4adf3fd4e4aa3`:
+
+1. Set Main bank opening balance to THB 1,000.00; cash became THB 1,000.00.
+2. Enter a THB 100.00 credit-card purchase split between Dining (THB 65.00)
+   and Groceries (THB 35.00); card debt and Expenses became THB 100.00.
+3. Before saving, changed the second allocation to THB 34.00; the UI displayed
+   `Allocated THB 99.00 / THB 100.00` and disabled `Record card purchase`.
+   Restored THB 35.00 and saved the transaction.
+4. Recorded THB 1,500.00 salary into Main bank and THB 40.00 repayment from
+   Main bank to Credit card.
+5. The dashboard showed cash THB 2,460.00, card debt THB 60.00, income
+   THB 1,500.00, expenses THB 100.00 and three transactions in history.
+
+This is local browser and database evidence only. It does not prove the public
+GCP URL or a cloud restart/redeployment.
+
 Stop the application without deleting the database volume with `docker compose
 down`. Remove the volume only when disposable local data may be deleted.
 
