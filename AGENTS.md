@@ -120,7 +120,7 @@ Do not launch or background application development servers for the user, includ
 
 ### Issue tracker
 
-Pockit work is tracked in GitHub Issues in `ovenmakemeheat/Pockit`; use `gh`. See `docs/agents/issue-tracker.md`.
+Pockit work is tracked in GitHub Issues in `CPE334-Pockit/Pockit`; use `gh`. See `docs/agents/issue-tracker.md`.
 
 ### Domain docs
 

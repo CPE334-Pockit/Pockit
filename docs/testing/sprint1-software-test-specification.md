@@ -1,11 +1,11 @@
 # Sprint 1 Software Test Specification
 
 **Version:** 0.4 — Issue #8 implementation, verification, session-race review, and Bun runtime follow-up<br>
-**Issue:** [#8 — Sprint 1: Working Sprint 1 and verification](https://github.com/ovenmakemeheat/Pockit/issues/8) (contract baseline: [#7](https://github.com/ovenmakemeheat/Pockit/issues/7))<br>
+**Issue:** [#8 — Sprint 1: Working Sprint 1 and verification](https://github.com/CPE334-Pockit/Pockit/issues/8) (contract baseline: [#7](https://github.com/CPE334-Pockit/Pockit/issues/7))<br>
 **Feature contract:** [Sprint 1 Feature-Level SDS](../features/sprint1-feature-contracts.md)<br>
 **Requirements:** [SRS](../requirements/srs.md), [Feature Inventory](../requirements/feature-inventory.md), [System-Level SDS](../architecture/system-level-sds.md)
 
-> **Status:** Sprint 1 was integrated by reviewed PR [#25](https://github.com/ovenmakemeheat/Pockit/pull/25) and released through reviewed PR [#24](https://github.com/ovenmakemeheat/Pockit/pull/24) to `main`. This document preserves the historical implementation and session-race evidence below and adds the Bun 1.4.4 runtime follow-up record at the end. The latest runtime follow-up uses the existing Issue #8 branch and targets `staging-1`; its review and a separate release PR remain required before those follow-up changes reach `main`. Historical pre-implementation failing output for the earlier financial business rules was not captured in this execution record; do not claim TDD-first evidence for those changes. Future currency/amount-limit extensions remain outside this Sprint 1 slice.
+> **Status:** Sprint 1 was integrated by reviewed PR [#25](https://github.com/CPE334-Pockit/Pockit/pull/25) and released through reviewed PR [#24](https://github.com/CPE334-Pockit/Pockit/pull/24) to `main`. This document preserves the historical implementation and session-race evidence below and adds the Bun 1.4.4 runtime follow-up record at the end. The latest runtime follow-up uses the existing Issue #8 branch and targets `staging-1`; its review and a separate release PR remain required before those follow-up changes reach `main`. Historical pre-implementation failing output for the earlier financial business rules was not captured in this execution record; do not claim TDD-first evidence for those changes. Future currency/amount-limit extensions remain outside this Sprint 1 slice.
 
 ## 1. Test purpose and quality rules
 
@@ -204,7 +204,7 @@ Every contract AC appears below. The actual-result column distinguishes passing 
 - No web/server `dev` process was started. Browser-level visual checks and full browser route journeys were not run; UI evidence is from component tests only.
 - Remaining limitations: browser-run UI/route role separation was not verified because no dev server may be started; dedicated structured log-redaction assertions are absent. The persistence test reconstructs the HTTP app handler and DB client without opening a listener or launching an app process.
 - The historical pre-implementation failing test run for each business rule was not captured in this record. Passing tests verify current behavior only and do not prove TDD-first chronology.
-- PR [#23](https://github.com/ovenmakemeheat/Pockit/pull/23) is open from `feature/working-sprint1` to `staging-1`; @MadMax168 is the requested reviewer. The automated Codex review's P1 finding about cross-User finance-cache reuse was fixed in `b99ed09` and its regression passed. Issue #8 and the project board remain **Started**. Teammate review, reviewed merge to `staging-1`, and the separate release PR to `main` are still required.
+- PR [#23](https://github.com/CPE334-Pockit/Pockit/pull/23) is open from `feature/working-sprint1` to `staging-1`; @MadMax168 is the requested reviewer. The automated Codex review's P1 finding about cross-User finance-cache reuse was fixed in `b99ed09` and its regression passed. Issue #8 and the project board remain **Started**. Teammate review, reviewed merge to `staging-1`, and the separate release PR to `main` are still required.
 
 ### Actual execution record — PR #23 session-race follow-up
 

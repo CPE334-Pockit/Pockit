@@ -2,7 +2,7 @@
 
 **Project:** Pockit — Personal Money and Expense Logging System (CPE 334, Theme 7)<br>
 **Version:** 0.1 — Sprint 1 baseline; later-sprint allocation is proposed pending Issue #6<br>
-**Issue:** [#4 — Sprint 1: Feature inventory and traceability](https://github.com/ovenmakemeheat/Pockit/issues/4)<br>
+**Issue:** [#4 — Sprint 1: Feature inventory and traceability](https://github.com/CPE334-Pockit/Pockit/issues/4)<br>
 **SRS:** [Software Requirements Specification](srs.md)<br>
 **Approved brief:** `docs/assignments/final/group_work_specs_v1.pdf`, section 6, item 7; Sprint 1 scope also follows Issue #8.
 
