@@ -96,9 +96,40 @@ curl --fail http://localhost:3000/api/ready
 Apply migrations and seed synthetic local data after PostgreSQL is healthy:
 
 ```bash
-docker compose run --rm server bun run db:migrate:deploy
-docker compose run --rm server bun run db:seed
+docker compose run --rm -w /app server bun run db:migrate:deploy
+docker compose run --rm -w /app -e NODE_ENV=development server bun run db:seed
 ```
+
+Set a synthetic local-only `POCKIT_DEMO_PASSWORD` in the ignored
+`apps/server/.env` before seeding. The production container image defaults to
+`NODE_ENV=production`; the one-off seed command explicitly opts into local
+development mode. Run these commands only against a disposable local database.
+If port 5432 is already occupied, set `POCKIT_POSTGRES_PORT=15432` for every
+Compose command in the same isolated project instead of stopping the existing
+database service.
+
+### Local verification on 2026-11-17 (Issue #36)
+
+Tested source commit: `499f02b67c101699a5e302b23fa4adf3fd4e4aa3`.
+An isolated Compose project named `pockit-lab5-audit` used host PostgreSQL port
+15432 and its own named volume. Ignored local `.env` files contained synthetic
+values. The following commands and observations were recorded:
+
+| Command or check | Result |
+| --- | --- |
+| `docker compose -p pockit-lab5-audit build` | API and web images built successfully, exit 0. |
+| `POCKIT_POSTGRES_PORT=15432 docker compose -p pockit-lab5-audit up -d postgres` | PostgreSQL started healthy. The default 5432 host port was occupied by another service. |
+| `POCKIT_POSTGRES_PORT=15432 docker compose -p pockit-lab5-audit run --rm -w /app server bun run db:migrate:deploy` | Four checked-in migrations applied, exit 0. |
+| `POCKIT_POSTGRES_PORT=15432 docker compose -p pockit-lab5-audit run --rm -e NODE_ENV=development -w /app server bun run db:seed` | Seeded 3 synthetic identities and 10 financial accounts, exit 0. |
+| `POCKIT_POSTGRES_PORT=15432 docker compose -p pockit-lab5-audit up -d server web` | PostgreSQL, API and web containers reached healthy state. |
+| `curl --fail http://localhost:3000/api/health`; `curl --fail http://localhost:3000/api/ready`; `curl --fail -o /dev/null -w '%{http_code}' http://localhost:3001/` | `ok`, database `connected`, and web HTTP 200. |
+| `POCKIT_POSTGRES_PORT=15432 docker compose -p pockit-lab5-audit run --rm -w /app -e NODE_ENV=test server bun run test` | Web, server, API and PostgreSQL test suites passed; includes valid/invalid login, finance journey and rejection/access checks. |
+| Count synthetic Users, restart only `server web`, count again and request `/api/ready` | Count 3 before and 3 after; readiness returned database `connected`. |
+
+The automated finance persistence test also disconnects Prisma, recreates the
+server app and database client, and verifies balances, summaries and history.
+This local restart is not evidence of GCP redeployment or persistence through a
+new Cloud Run revision.
 
 Stop the application without deleting the database volume with `docker compose
 down`. Remove the volume only when disposable local data may be deleted.
