@@ -11,31 +11,41 @@ permissions:
   contents: read
   id-token: write
 
+concurrency:
+  group: pockit-course-deploy
+  cancel-in-progress: false
+
 env:
-  PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
-  REGION: ${{ vars.GCP_REGION }}
-  AR_REPOSITORY: pockit
-  API_SERVICE: pockit-api
-  WEB_SERVICE: pockit-web
-  MIGRATION_JOB: pockit-migrate
-  SQL_INSTANCE: pockit-pg
-  RUNTIME_SERVICE_ACCOUNT: pockit-runner@${{ vars.GCP_PROJECT_ID }}.iam.gserviceaccount.com
+  PROJECT_ID: cpe-se-course-2026
+  REGION: asia-southeast1
+  PREFIX: s4b043a2c
+  SERVICE_URL: https://s4b043a2c-4d7hbszvwq-as.a.run.app
   RELEASE_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
 
 jobs:
   deploy:
-    name: deploy-${{ github.sha }}
+    name: deploy-${{ github.event.workflow_run.head_sha || github.sha }}
     runs-on: ubuntu-latest
     environment: production
     if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
 
     steps:
-      - name: Check out release commit
+      - name: Check out reviewed release commit
         uses: actions/checkout@v4
         with:
           ref: ${{ env.RELEASE_SHA }}
 
-      - name: Authenticate to Google Cloud
+      - name: Validate university GitHub connection
+        env:
+          WIF_PROVIDER: ${{ vars.WIF_PROVIDER }}
+          WIF_SERVICE_ACCOUNT: ${{ vars.WIF_SERVICE_ACCOUNT }}
+        run: |
+          test -n "${WIF_PROVIDER}" || { echo 'TA must connect this repository to the team WIF provider'; exit 1; }
+          test -n "${WIF_SERVICE_ACCOUNT}" || { echo 'TA must provide the team deployer service account'; exit 1; }
+          test "${WIF_SERVICE_ACCOUNT}" = "${PREFIX}-deployer@${PROJECT_ID}.iam.gserviceaccount.com"
+          [[ "${RELEASE_SHA}" =~ ^[0-9a-f]{40}$ ]]
+
+      - name: Authenticate without a service-account key
         uses: google-github-actions/auth@v2
         with:
           workload_identity_provider: ${{ vars.WIF_PROVIDER }}
@@ -44,86 +54,46 @@ jobs:
       - name: Set up gcloud
         uses: google-github-actions/setup-gcloud@v2
 
-      - name: Configure Artifact Registry
-        run: gcloud auth configure-docker "${REGION}-docker.pkg.dev" --quiet
-
-      - name: Build and push API image
+      - name: Confirm only team resources exist
         run: |
-          API_IMAGE="${REGION}-docker.pkg.dev/${PROJECT_ID}/${AR_REPOSITORY}/api:${RELEASE_SHA}"
-          docker build -f apps/server/Dockerfile -t "${API_IMAGE}" .
-          docker push "${API_IMAGE}"
-          echo "API_IMAGE=${API_IMAGE}" >> "$GITHUB_ENV"
+          gcloud run services describe "${PREFIX}" --project="${PROJECT_ID}" --region="${REGION}" >/dev/null
+          gcloud run jobs describe "${PREFIX}-migrate" --project="${PROJECT_ID}" --region="${REGION}" >/dev/null
 
-      - name: Run database migration job
+      - name: Build and push unified web and API image
         run: |
-          if gcloud run jobs describe "${MIGRATION_JOB}" --project="${PROJECT_ID}" --region="${REGION}" >/dev/null 2>&1; then
-            JOB_COMMAND=(gcloud run jobs update "${MIGRATION_JOB}")
-          else
-            JOB_COMMAND=(gcloud run jobs create "${MIGRATION_JOB}")
-          fi
-          "${JOB_COMMAND[@]}" \
-            --image="${API_IMAGE}" \
-            --command=bun \
-            --args=run,db:migrate:deploy \
-            --set-secrets="DATABASE_URL=pockit-database-url:latest" \
-            --set-cloudsql-instances="${PROJECT_ID}:${REGION}:${SQL_INSTANCE}" \
-            --service-account="${RUNTIME_SERVICE_ACCOUNT}" \
-            --project="${PROJECT_ID}" \
-            --region="${REGION}" \
-            --quiet
-          gcloud run jobs execute "${MIGRATION_JOB}" \
-            --wait \
-            --project="${PROJECT_ID}" \
-            --region="${REGION}" \
-            --quiet
+          gcloud auth configure-docker "${REGION}-docker.pkg.dev" --quiet
+          IMAGE="${REGION}-docker.pkg.dev/${PROJECT_ID}/${PREFIX}/${PREFIX}:${RELEASE_SHA}"
+          docker build --platform linux/amd64 -f deploy/Dockerfile.course \
+            --build-arg "VITE_SERVER_URL=${SERVICE_URL}" \
+            --secret id=web_env,src=apps/web/.env.example \
+            --secret id=server_env,src=apps/server/.env.example \
+            -t "${IMAGE}" .
+          docker push "${IMAGE}"
+          echo "IMAGE=${IMAGE}" >> "${GITHUB_ENV}"
 
-      - name: Deploy API service
+      - name: Apply checked-in database migrations
         run: |
-          gcloud run deploy "${API_SERVICE}" \
-            --image="${API_IMAGE}" \
-            --port=3000 \
-            --allow-unauthenticated \
-            --project="${PROJECT_ID}" \
-            --region="${REGION}" \
-            --set-env-vars="NODE_ENV=production,HOST=0.0.0.0" \
-            --set-secrets="DATABASE_URL=pockit-database-url:latest,BETTER_AUTH_SECRET=pockit-auth-secret:latest" \
-            --quiet
+          gcloud run jobs update "${PREFIX}-migrate" \
+            --image="${IMAGE}" --command=bun --args=run,db:migrate:deploy \
+            --update-env-vars=NODE_ENV=production \
+            --project="${PROJECT_ID}" --region="${REGION}" --quiet
+          gcloud run jobs execute "${PREFIX}-migrate" \
+            --wait --project="${PROJECT_ID}" --region="${REGION}" --quiet
 
-      - name: Build and push web image
+      - name: Update the pre-provisioned team service
         run: |
-          API_URL="$(gcloud run services describe "${API_SERVICE}" --project="${PROJECT_ID}" --region="${REGION}" --format='value(status.url)')"
-          WEB_IMAGE="${REGION}-docker.pkg.dev/${PROJECT_ID}/${AR_REPOSITORY}/web:${RELEASE_SHA}"
-          docker build -f apps/web/Dockerfile --build-arg "VITE_SERVER_URL=${API_URL}" -t "${WEB_IMAGE}" .
-          docker push "${WEB_IMAGE}"
-          echo "API_URL=${API_URL}" >> "$GITHUB_ENV"
-          echo "WEB_IMAGE=${WEB_IMAGE}" >> "$GITHUB_ENV"
+          gcloud run services update "${PREFIX}" \
+            --image="${IMAGE}" --port=3000 --memory=1Gi --cpu=1 \
+            --min-instances=0 --max-instances=1 \
+            --update-env-vars="NODE_ENV=production,BETTER_AUTH_URL=${SERVICE_URL},CORS_ORIGIN=${SERVICE_URL},VITE_SERVER_URL=${SERVICE_URL}" \
+            --update-secrets="BETTER_AUTH_SECRET=${PREFIX}-app-secret-1:latest" \
+            --project="${PROJECT_ID}" --region="${REGION}" --quiet
 
-      - name: Deploy web service
+      - name: Smoke test public web and API
         run: |
-          gcloud run deploy "${WEB_SERVICE}" \
-            --image="${WEB_IMAGE}" \
-            --port=3001 \
-            --allow-unauthenticated \
-            --project="${PROJECT_ID}" \
-            --region="${REGION}" \
-            --set-env-vars="NODE_ENV=production,HOST=0.0.0.0,SERVER_URL=${API_URL}" \
-            --quiet
-
-      - name: Align API trusted origin with web URL
-        run: |
-          WEB_URL="$(gcloud run services describe "${WEB_SERVICE}" --project="${PROJECT_ID}" --region="${REGION}" --format='value(status.url)')"
-          API_URL="$(gcloud run services describe "${API_SERVICE}" --project="${PROJECT_ID}" --region="${REGION}" --format='value(status.url)')"
-          gcloud run services update "${API_SERVICE}" \
-            --update-env-vars="CORS_ORIGIN=${WEB_URL},BETTER_AUTH_URL=${API_URL}" \
-            --project="${PROJECT_ID}" \
-            --region="${REGION}" \
-            --quiet
-          echo "WEB_URL=${WEB_URL}" >> "$GITHUB_ENV"
-          echo "API_URL=${API_URL}" >> "$GITHUB_ENV"
-
-      - name: Smoke test release
-        run: |
-          curl --fail --show-error --retry 5 --retry-delay 3 "${API_URL}/api/health"
-          curl --fail --show-error --retry 5 --retry-delay 3 "${API_URL}/api/ready"
-          curl --fail --show-error --retry 5 --retry-delay 3 "${WEB_URL}/"
-          echo "Deployed commit: ${RELEASE_SHA}"
+          curl --fail --show-error --retry 5 --retry-delay 3 "${SERVICE_URL}/api/health"
+          curl --fail --show-error --retry 5 --retry-delay 3 "${SERVICE_URL}/api/ready"
+          curl --fail --show-error --retry 5 --retry-delay 3 "${SERVICE_URL}/" >/dev/null
+          echo "Released commit: ${RELEASE_SHA}"
+          echo "Image: ${IMAGE}"
+          echo "Public URL: ${SERVICE_URL}"
