@@ -39,6 +39,11 @@ if [[ "$DRY_RUN" == 0 ]]; then
     echo 'Deploy only a clean checkout' >&2
     exit 1
   }
+  git fetch --quiet origin main
+  [[ "$SHA" == "$(git rev-parse origin/main)" ]] || {
+    echo 'Local main must match the reviewed remote release' >&2
+    exit 1
+  }
   [[ "$(gcloud config get-value project 2>/dev/null)" == "$PROJECT_ID" ]] || {
     echo 'Set the course project before deploying' >&2
     exit 1
