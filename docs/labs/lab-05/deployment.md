@@ -81,9 +81,11 @@ shows the assigned project, region, prefix, and reserved URL without credentials
 
 The image and gateway changes were tested on the existing `lab5-gcp-deploy`
 branch after fast-forwarding it to `lab5` merge commit
-`0b3364660da8b6d4ccc7839846e328701edcfd7e`. The exact change commit
-and PR CI result will be recorded after push. This is local verification, not
-evidence that Pockit is deployed on GCP.
+`0b3364660da8b6d4ccc7839846e328701edcfd7e`. Local image and runtime
+checks used change commit `eba7db6dbc663e2d617652f52cdfc2ac8cb61357`;
+the latest source and CI status are tracked in
+[follow-up PR #65](https://github.com/CPE334-Pockit/Pockit/pull/65). This is
+local verification, not evidence that Pockit is deployed on GCP.
 
 | Command or check | Result |
 | --- | --- |
