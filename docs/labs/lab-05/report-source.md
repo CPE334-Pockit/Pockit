@@ -23,7 +23,7 @@ Topic: 7 — Personal Money and Expense Logging System (Pockit).
 - Public web/API URL: `https://s4b043a2c-4d7hbszvwq-as.a.run.app`; Pockit revision `s4b043a2c-00002-82b` serves the reviewed commit after a manual deployment.
 - [C-01 through C-06 evidence index](evidence-index.md). C-01 and C-02 are
   verified; C-03 has integrated local Docker evidence. C-04 through C-06 remain
-  incomplete until a signed-in financial action, GitHub Actions release and persistence checks run.
+  incomplete until GitHub Actions release and persistence checks run.
 
 ## Answer Part 1: CI and Quality Gate
 
@@ -66,10 +66,13 @@ evidence. Pockit replaced the placeholder by a manual deployment of reviewed
 commit `5256b3c`: migration and course User bootstrap completed, and revision
 `s4b043a2c-00002-82b` serves 100% of traffic. The public root, login, health
 and readiness paths returned HTTP 200; an unauthenticated finance read returned
-HTTP 401. A team member reported successful public sign-in to the dashboard
-with the synthetic course User. That report is user-observed and has no saved
-browser trace. A successful signed-in financial action and before/after cloud
-restart/redeploy screenshots remain to be captured.
+HTTP 401. A team-provided screenshot shows successful public sign-in to the
+dashboard and the `LAB5-PERSIST-20261120` Salary receipt for THB 123.45;
+Cash on hand and Income both show THB 123.45. The original screenshot is
+kept locally because browser chrome includes unrelated personal tabs and
+bookmarks. A fresh application revision `s4b043a2c-lab5restart` now serves
+the same release image and public readiness reports `db: connected`.
+Before/after cloud restart and redeployment screenshots remain to be captured.
 The local Compose restart retained three synthetic Users, but this does not
 prove C-04 or C-05 on GCP. Add direct URLs and numbered, readable screenshots
 with the public URL and serving commit when the cloud workflow is tested.

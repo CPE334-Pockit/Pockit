@@ -451,8 +451,29 @@ worktree at the release commit ran:
 | Access restriction | Unauthenticated `GET /trpc/finance.accounts.list` returned HTTP 401, `Authentication required`. |
 | Runtime secrets | Service config maps `DATABASE_URL` to `s4b043a2c-database-url:latest` and `BETTER_AUTH_SECRET` to `s4b043a2c-app-secret-1:latest`; no values were read or committed. |
 
-This proves public web/API/database readiness and an unauthenticated access
-restriction. Sign-in and a successful financial action through the public URL
-remain to be observed. The final Lab 5 report also needs before/after restart
-and redeployment evidence for the same synthetic financial record.
+The team member signed in to the public dashboard as the synthetic course User
+and recorded one `Salary` receipt dated 2026-11-20, description
+`LAB5-PERSIST-20261120`, amount THB 123.45 into `Main bank`. Their screenshot
+shows the public `/dashboard` URL, the single Recent activity entry, Cash on
+hand THB 123.45 and Income THB 123.45. The original screenshot is retained
+locally at `artifacts/private/public-income-before-restart-2026-11-20.png`
+for the report because its browser chrome includes unrelated personal tabs
+and bookmarks. The `artifacts/private/` directory is Git-ignored. Together
+with the HTTP 401 finance read above, this
+verifies the public business action and access restriction in #38. The
+signed-in journey is a team-observed screenshot, not an agent-controlled trace.
+
+For the first cloud persistence step, the same reviewed image was rolled to a
+fresh application revision without touching Cloud SQL or rerunning the
+bootstrap job:
+
+`gcloud run services update s4b043a2c --image=asia-southeast1-docker.pkg.dev/cpe-se-course-2026/s4b043a2c/s4b043a2c:5256b3cd7b9269dc32db5bd10abfe401bbaeb958 --revision-suffix=lab5restart --project=cpe-se-course-2026 --region=asia-southeast1 --quiet`
+
+The command exited 0. A subsequent service describe showed revision
+`s4b043a2c-lab5restart` Ready and serving 100% of traffic with the same full
+release SHA image tag. Public `/api/ready` returned
+`{"status":"ready","db":"connected"}`. The team must now refresh the
+dashboard and capture the same transaction and balance before this can count
+as post-restart persistence evidence. A later, separate redeployment check is
+still required for #41.
 
