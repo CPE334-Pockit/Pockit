@@ -36,6 +36,7 @@ plan for the shared course environment.
 | Runtime service account | `s4b043a2c-runner@cpe-se-course-2026.iam.gserviceaccount.com` | Existing team runtime identity. |
 | Secret Manager secret | `s4b043a2c-database-url` | Portal-created database connection; value is never copied into the repo. |
 | Secret Manager secret | `s4b043a2c-app-secret-1` | Pockit's Better Auth signing secret; random value stored as version 1 on 2026-11-19 without displaying it. |
+| Secret Manager secret | `s4b043a2c-app-secret-2` | Team-chosen course User password; add a version before the first release. No version has been verified yet. |
 
 Deployment order:
 
@@ -43,9 +44,12 @@ Deployment order:
 2. Build and push the unified image to the team's existing registry, tagged with
    the full reviewed `main` commit SHA.
 3. Update and execute the existing migration job; stop if it fails.
-4. Update only the team's existing Cloud Run service with the same image and
+4. Run the same team job with the one-time course User bootstrap command. It
+   creates one synthetic User and five financial accounts if absent, and never
+   resets the password or finance data on a later release. Stop if it fails.
+5. Update only the team's existing Cloud Run service with the same image and
    public URL settings. Preserve its existing database secret and connection.
-5. Verify health, readiness, authentication, the Sprint 1 financial workflow, and
+6. Verify health, readiness, authentication, the Sprint 1 financial workflow, and
    one rejection/access restriction through the public web URL.
 
 The course portal creates infrastructure and IAM. Never run the former teardown
@@ -116,6 +120,7 @@ GCP runtime secret/configuration mechanism.
 | `CORS_ORIGIN` | Server/auth | No | Trusted web origin for browser requests. |
 | `DATABASE_URL` | Server/database | Yes | PostgreSQL connection string. |
 | `POCKIT_DEMO_PASSWORD` | Server seed | Yes | Optional synthetic local demo password; never commit a real value. |
+| `POCKIT_BOOTSTRAP_PASSWORD` | One-time course bootstrap job only | Yes | Team-chosen credential supplied from pre-provisioned app secret slot 2; it is never mapped to the serving application. |
 | `VITE_SERVER_URL` | Web | No | Public server URL used by the web client. |
 | `SERVER_URL` | Web SSR | No | Internal API listener in the single-service course image. |
 
@@ -292,12 +297,47 @@ connection.
 
 ## 9. Release workflow
 
+### First-release identity preparation
+
+Pockit disables public signup, and the local synthetic seed command deliberately
+refuses production. Before the first GCP release, the team must put a password
+of at least 16 characters into its pre-provisioned
+`s4b043a2c-app-secret-2` slot. Use a password manager to retain the value;
+the web portal cannot display it later. Do not put it in GitHub, an issue, a
+shell argument, or this document. For example, this local command uses a hidden
+prompt and passes the value to gcloud on standard input:
+
+```bash
+python3 - <<'PY'
+import getpass
+import subprocess
+
+password = getpass.getpass('Course User password (at least 16 characters): ')
+if len(password) < 16:
+    raise SystemExit('Password must contain at least 16 characters')
+subprocess.run([
+    'gcloud', 'secrets', 'versions', 'add', 's4b043a2c-app-secret-2',
+    '--project=cpe-se-course-2026', '--data-file=-',
+], input=password.encode(), check=True)
+PY
+```
+
+The bootstrap job uses that secret to create `course.user@pockit.test` and
+five THB accounts after migrations succeed and before the service is updated.
+It is safe to rerun: an existing identity, password hash, and finance data are
+preserved. Keep the chosen password to sign in during public verification.
+Changing secret slot 2 later does not rotate the existing account password.
+If the bootstrap job fails, the service update does not run. The local
+`db:seed` production safeguard remains in place.
+
 `.github/workflows/deploy.yml` runs after the `CI and Docker` workflow succeeds on
-the exact `main` commit, or by manual dispatch. Once the TA enables WIF, it
+the exact `main` commit, or by manual dispatch after checking a successful CI
+run for that same SHA. Once the TA enables WIF, it
 authenticates without a key, builds the single course image tagged with the full
 commit SHA, pushes it to the team's existing Artifact Registry repository,
-updates and executes the existing migration job, updates the existing Cloud Run
-service, and runs public health/readiness smoke checks. It never creates
+updates and executes the existing migration job, runs the course User bootstrap,
+updates the existing Cloud Run service, and runs bounded public health/readiness
+smoke checks. It never creates
 infrastructure or changes project IAM.
 
 ### Repeatable release procedure (AC-L5-07-06)
