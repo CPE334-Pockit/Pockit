@@ -483,8 +483,11 @@ release image tag and team service. It exited 0 and created revision
 `s4b043a2c-lab5redeploy`. Service describe showed that revision Ready and
 serving 100% of traffic with the full `5256b3cd7b9269dc32db5bd10abfe401bbaeb958`
 image tag. Public `/api/ready` again returned
-`{"status":"ready","db":"connected"}`. The team must now refresh the
-dashboard and capture the same transaction and balance after this second
-revision before claiming redeployment persistence. This manual redeployment
-does not substitute for the still-failing GitHub Actions workflow in #39/#40.
+`{"status":"ready","db":"connected"}`. After refreshing the public
+dashboard again, the team member reported that the same transaction and THB
+123.45 balance remained visible. Issue #41 AC-L5-08-01/02 are checked using
+the team-observed results and the named command/revision/readiness evidence.
+The two promised post-rollout screenshots remain needed for the final PDF.
+This manual redeployment does not substitute for the still-failing GitHub
+Actions workflow in #39/#40.
 

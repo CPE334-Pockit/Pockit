@@ -74,9 +74,11 @@ bookmarks. A fresh application revision `s4b043a2c-lab5restart` served the
 same release image and public readiness reported `db: connected`; the team
 member reported that the record and balance remained visible after refreshing.
 A separate manual redeployment created `s4b043a2c-lab5redeploy` from the
-same image; public readiness again reported `db: connected`. The promised
-after-restart image and the after-redeploy record screenshot remain to be
-captured.
+same image; public readiness again reported `db: connected`. The team member
+reported that the same record and balance remained visible after refreshing
+on both revisions. Issue #41 AC-L5-08-01/02 are checked against these
+team-observed results and command/revision evidence. The promised after-restart
+and after-redeploy screenshots remain to be captured for the final PDF.
 The local Compose restart retained three synthetic Users, but this does not
 prove C-04 or C-05 on GCP. Add direct URLs and numbered, readable screenshots
 with the public URL and serving commit when the cloud workflow is tested.
