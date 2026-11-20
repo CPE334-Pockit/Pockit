@@ -9,6 +9,7 @@ on:
 
 permissions:
   contents: read
+  actions: read
   id-token: write
 
 concurrency:
@@ -41,6 +42,16 @@ jobs:
         run: |
           git fetch --quiet origin main
           test "${RELEASE_SHA}" = "$(git rev-parse origin/main)"
+
+      - name: Require passing CI on manual release SHA
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          runs="$(gh api --method GET "repos/${GITHUB_REPOSITORY}/actions/workflows/ci-docker.yml/runs" \
+            -f head_sha="${RELEASE_SHA}" -f branch=main -f status=success -f per_page=100)"
+          printf '%s' "${runs}" | jq -e --arg sha "${RELEASE_SHA}" \
+            '.workflow_runs | any(.head_sha == $sha and .head_branch == "main" and .conclusion == "success")'
 
       - name: Validate university GitHub connection
         env:
@@ -87,6 +98,15 @@ jobs:
           gcloud run jobs execute "${PREFIX}-migrate" \
             --wait --project="${PROJECT_ID}" --region="${REGION}" --quiet
 
+      - name: Provision the course User once
+        run: |
+          gcloud run jobs update "${PREFIX}-migrate" \
+            --image="${IMAGE}" --command=bun --args=apps/server/src/bootstrap-course.ts \
+            --update-secrets="POCKIT_BOOTSTRAP_PASSWORD=${PREFIX}-app-secret-2:latest" \
+            --project="${PROJECT_ID}" --region="${REGION}" --quiet
+          gcloud run jobs execute "${PREFIX}-migrate" \
+            --wait --project="${PROJECT_ID}" --region="${REGION}" --quiet
+
       - name: Update the pre-provisioned team service
         run: |
           gcloud run services update "${PREFIX}" \
@@ -98,9 +118,9 @@ jobs:
 
       - name: Smoke test public web and API
         run: |
-          curl --fail --show-error --retry 5 --retry-delay 3 "${SERVICE_URL}/api/health"
-          curl --fail --show-error --retry 5 --retry-delay 3 "${SERVICE_URL}/api/ready"
-          curl --fail --show-error --retry 5 --retry-delay 3 "${SERVICE_URL}/" >/dev/null
+          curl --fail --show-error --connect-timeout 5 --max-time 15 --retry 5 --retry-delay 3 "${SERVICE_URL}/api/health"
+          curl --fail --show-error --connect-timeout 5 --max-time 15 --retry 5 --retry-delay 3 "${SERVICE_URL}/api/ready"
+          curl --fail --show-error --connect-timeout 5 --max-time 15 --retry 5 --retry-delay 3 "${SERVICE_URL}/" >/dev/null
           echo "Released commit: ${RELEASE_SHA}"
           echo "Image: ${IMAGE}"
           echo "Public URL: ${SERVICE_URL}"

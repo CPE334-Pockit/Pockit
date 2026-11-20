@@ -69,6 +69,15 @@ run gcloud run jobs update "${PREFIX}-migrate" \
 run gcloud run jobs execute "${PREFIX}-migrate" \
   --wait --project="$PROJECT_ID" --region="$REGION" --quiet
 
+# Slot 2 holds a course User password chosen and stored by the team. The
+# bootstrap command creates the identity once and preserves it on later runs.
+run gcloud run jobs update "${PREFIX}-migrate" \
+  --image="$IMAGE" --command=bun --args=apps/server/src/bootstrap-course.ts \
+  --update-secrets="POCKIT_BOOTSTRAP_PASSWORD=${PREFIX}-app-secret-2:latest" \
+  --project="$PROJECT_ID" --region="$REGION" --quiet
+run gcloud run jobs execute "${PREFIX}-migrate" \
+  --wait --project="$PROJECT_ID" --region="$REGION" --quiet
+
 # Keep the portal's DATABASE_URL and ADMIN_PASSWORD mappings intact. The one
 # additional secret slot contains Pockit's generated Better Auth signing key.
 run gcloud run services update "$PREFIX" \
@@ -79,8 +88,8 @@ run gcloud run services update "$PREFIX" \
   --project="$PROJECT_ID" --region="$REGION" --quiet
 
 if [[ "$DRY_RUN" == 0 ]]; then
-  curl --fail --show-error --retry 5 --retry-delay 3 "${SERVICE_URL}/api/health"
-  curl --fail --show-error --retry 5 --retry-delay 3 "${SERVICE_URL}/api/ready"
-  curl --fail --show-error --retry 5 --retry-delay 3 "${SERVICE_URL}/" >/dev/null
+  curl --fail --show-error --connect-timeout 5 --max-time 15 --retry 5 --retry-delay 3 "${SERVICE_URL}/api/health"
+  curl --fail --show-error --connect-timeout 5 --max-time 15 --retry 5 --retry-delay 3 "${SERVICE_URL}/api/ready"
+  curl --fail --show-error --connect-timeout 5 --max-time 15 --retry 5 --retry-delay 3 "${SERVICE_URL}/" >/dev/null
 fi
 printf 'Release image: %s\nService URL: %s\n' "$IMAGE" "$SERVICE_URL"
