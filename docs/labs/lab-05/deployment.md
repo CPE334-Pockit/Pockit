@@ -281,6 +281,15 @@ retains its exact-SHA CI gate, migration-before-service ordering, course User
 bootstrap, and public smoke checks while switching to the portal-bound `demo`
 environment. Runtime secrets remain in Secret Manager.
 
+The team later supplied a privacy-safe [portal status screenshot](artifacts/course-wif-connected-2026-11-21.png)
+showing `เชื่อม GitHub Actions (WIF) — เชื่อมแล้ว` after resource preparation.
+This verifies that the portal reports the connection as complete; it is not
+evidence that Google accepted a GitHub OIDC token. The [manual `main` deploy
+attempt 3](https://github.com/CPE334-Pockit/Pockit/actions/runs/44757614254/attempts/3)
+still failed at token exchange. The separate error screenshot and a portal
+team-information screenshot are kept in Git-ignored `artifacts/private/` for
+the TA because the latter contains a member email.
+
 Configure the `main` branch ruleset with:
 
 - Enforcement: active.
