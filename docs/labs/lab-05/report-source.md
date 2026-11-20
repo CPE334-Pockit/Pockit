@@ -70,9 +70,13 @@ HTTP 401. A team-provided screenshot shows successful public sign-in to the
 dashboard and the `LAB5-PERSIST-20261120` Salary receipt for THB 123.45;
 Cash on hand and Income both show THB 123.45. The original screenshot is
 kept locally because browser chrome includes unrelated personal tabs and
-bookmarks. A fresh application revision `s4b043a2c-lab5restart` now serves
-the same release image and public readiness reports `db: connected`.
-Before/after cloud restart and redeployment screenshots remain to be captured.
+bookmarks. A fresh application revision `s4b043a2c-lab5restart` served the
+same release image and public readiness reported `db: connected`; the team
+member reported that the record and balance remained visible after refreshing.
+A separate manual redeployment created `s4b043a2c-lab5redeploy` from the
+same image; public readiness again reported `db: connected`. The promised
+after-restart image and the after-redeploy record screenshot remain to be
+captured.
 The local Compose restart retained three synthetic Users, but this does not
 prove C-04 or C-05 on GCP. Add direct URLs and numbered, readable screenshots
 with the public URL and serving commit when the cloud workflow is tested.

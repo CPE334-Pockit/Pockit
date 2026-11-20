@@ -472,8 +472,19 @@ bootstrap job:
 The command exited 0. A subsequent service describe showed revision
 `s4b043a2c-lab5restart` Ready and serving 100% of traffic with the same full
 release SHA image tag. Public `/api/ready` returned
+`{"status":"ready","db":"connected"}`. After refreshing the public
+dashboard, the team member reported that the same transaction and balance
+remained visible. Their promised after-restart screenshot is pending; record
+this as a user observation plus CLI revision/readiness evidence.
+
+For a separate redeployment check, the same `gcloud run services update`
+command was run with `--revision-suffix=lab5redeploy`, keeping the exact
+release image tag and team service. It exited 0 and created revision
+`s4b043a2c-lab5redeploy`. Service describe showed that revision Ready and
+serving 100% of traffic with the full `5256b3cd7b9269dc32db5bd10abfe401bbaeb958`
+image tag. Public `/api/ready` again returned
 `{"status":"ready","db":"connected"}`. The team must now refresh the
-dashboard and capture the same transaction and balance before this can count
-as post-restart persistence evidence. A later, separate redeployment check is
-still required for #41.
+dashboard and capture the same transaction and balance after this second
+revision before claiming redeployment persistence. This manual redeployment
+does not substitute for the still-failing GitHub Actions workflow in #39/#40.
 
