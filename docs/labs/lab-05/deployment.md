@@ -501,6 +501,14 @@ post-redeployment dashboard image, paired with the service revision/readiness
 commands and the team's explicit observations. The team confirmed it has no
 separate screenshot from after the first rollout; do not caption the duplicate
 as independent after-restart evidence.
+
+Read-only revision describe recorded creation timestamps
+`2026-11-20T15:35:26.928193Z` for `s4b043a2c-lab5restart` and
+`2026-11-20T15:42:39.035745Z` for `s4b043a2c-lab5redeploy`, both Ready.
+The first before-rollout screenshot file was saved at about 22:34 ICT; the
+byte-identical after-stage files were received at 22:45 ICT, after the second
+revision existed. These file times are consistent with the team's account
+but do not replace an independent screenshot from between the rollouts.
 This manual redeployment does not substitute for the still-failing GitHub
 Actions workflow in #39/#40.
 
