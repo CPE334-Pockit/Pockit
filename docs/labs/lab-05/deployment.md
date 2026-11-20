@@ -428,6 +428,18 @@ condition`. The team account cannot read the course provider condition
 has succeeded; the TA must inspect the provider's binding for this repo,
 `main`, `.github/workflows/deploy.yml`, and `demo`.
 
+On 2026-11-21 ICT, the failed manual run was retried as
+[attempt 3](https://github.com/CPE334-Pockit/Pockit/actions/runs/44757614254/attempts/3)
+on the same `main` commit. Job `136443062030` passed checkout, latest-main,
+exact-SHA CI and university variable validation, then failed at
+`Authenticate without a service-account key` with the same
+`unauthorized_client` attribute-condition rejection. No build, migration or
+Cloud Run update ran. The downloaded newer team workflow differs from
+Pockit's workflow in trigger (`push` versus `workflow_run`) and Google auth
+action version (v3 versus v2); neither difference is established as the cause.
+Send the attempt-3 job log to the TA and ask them to compare the provider
+condition with this run's OIDC claims before changing the reviewed workflow.
+
 To verify the application while WIF is blocked, an isolated clean `main`
 worktree at the release commit ran:
 
