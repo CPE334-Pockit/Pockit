@@ -77,8 +77,12 @@ A separate manual redeployment created `s4b043a2c-lab5redeploy` from the
 same image; public readiness again reported `db: connected`. The team member
 reported that the same record and balance remained visible after refreshing
 on both revisions. Issue #41 AC-L5-08-01/02 are checked against these
-team-observed results and command/revision evidence. The promised after-restart
-and after-redeploy screenshots remain to be captured for the final PDF.
+team-observed results and command/revision evidence. The two images submitted
+as after-stage evidence have the same SHA-256 digest and are byte-identical.
+The team confirmed it has no separate after-restart screenshot. Retain one as
+the post-redeployment image; do not present them as two independent images.
+The original browser chrome includes unrelated personal tabs and bookmarks,
+so place a privacy-safe view in the PDF.
 The local Compose restart retained three synthetic Users, but this does not
 prove C-04 or C-05 on GCP. Add direct URLs and numbered, readable screenshots
 with the public URL and serving commit when the cloud workflow is tested.

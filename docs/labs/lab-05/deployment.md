@@ -474,8 +474,9 @@ The command exited 0. A subsequent service describe showed revision
 release SHA image tag. Public `/api/ready` returned
 `{"status":"ready","db":"connected"}`. After refreshing the public
 dashboard, the team member reported that the same transaction and balance
-remained visible. Their promised after-restart screenshot is pending; record
-this as a user observation plus CLI revision/readiness evidence.
+remained visible. No distinct screenshot was captured between the two
+rollouts; record this as a user observation plus CLI revision/readiness
+evidence.
 
 For a separate redeployment check, the same `gcloud run services update`
 command was run with `--revision-suffix=lab5redeploy`, keeping the exact
@@ -487,7 +488,19 @@ image tag. Public `/api/ready` again returned
 dashboard again, the team member reported that the same transaction and THB
 123.45 balance remained visible. Issue #41 AC-L5-08-01/02 are checked using
 the team-observed results and the named command/revision/readiness evidence.
-The two promised post-rollout screenshots remain needed for the final PDF.
+The team later sent two screenshot files for the after-rollout stages. Both
+display the public `/dashboard`, the one `LAB5-PERSIST-20261120` transaction
+and THB 123.45 Cash/Income totals. File inspection showed that both have the
+same SHA-256 digest
+`3383f8ad7bb9672cea297eb3061a38d94034e2a6bfaf5db646cfd259d69c07ec`;
+they are byte-identical copies rather than distinct observations of the two
+revisions. One copy is retained locally at
+`artifacts/private/public-income-after-redeploy-2026-11-20.png` because its
+browser chrome includes unrelated personal tabs and bookmarks. Treat it as a
+post-redeployment dashboard image, paired with the service revision/readiness
+commands and the team's explicit observations. The team confirmed it has no
+separate screenshot from after the first rollout; do not caption the duplicate
+as independent after-restart evidence.
 This manual redeployment does not substitute for the still-failing GitHub
 Actions workflow in #39/#40.
 
