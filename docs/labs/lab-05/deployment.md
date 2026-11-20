@@ -266,11 +266,20 @@ JSON key in GitHub Actions secrets. On 2026-11-20, the TA enabled a new portal
 path for public non-Starter-Kit repositories with a root `Dockerfile`. The
 portal inspected `CPE334-Pockit/Pockit` at `main` commit `211bb77` and offered
 to connect it despite its different layout, but `main` had no root Dockerfile.
-The course image Dockerfile is now moved to the root; the portal connection
-remains pending until this change reaches `main`. The portal will then display
-four GitHub variables for the `demo` environment and a generated workflow.
-Review that workflow against Pockit's migration, bootstrap, port 3000, and
-release checks before using it. Runtime secrets remain in Secret Manager.
+The course image Dockerfile reached the root of `main` in release PR #66 at
+`01c298717b1809ec220eed8906d9a9508a673f85`. The portal accepted the
+request to connect `CPE334-Pockit/Pockit` to team `s4b043a2c` on 2026-11-20;
+WIF setup completed and the portal showed `GitHub Actions connected`. A fresh
+repo reinspection displayed `Possible credentials were detected in a deployment
+file` and kept
+the older cached review SHA; this warning has not yet identified a file or a
+secret value. The portal displayed four GitHub variables for the `demo`
+environment and a generated workflow. The [GitHub `demo` environment](https://github.com/CPE334-Pockit/Pockit/settings/environments/27997376231/edit) was created,
+restricted to branch `main`, and populated with those four non-secret values
+plus `APP_PORT=3000`. The generated workflow was inspected; Pockit's workflow
+retains its exact-SHA CI gate, migration-before-service ordering, course User
+bootstrap, and public smoke checks while switching to the portal-bound `demo`
+environment. Runtime secrets remain in Secret Manager.
 
 Configure the `main` branch ruleset with:
 
@@ -294,9 +303,9 @@ test at `apps/server/src/merge-gate-demo.test.ts:4` failed in
 [Actions run 44135270043](https://github.com/CPE334-Pockit/Pockit/actions/runs/44135270043).
 The PR UI showed the check as `Required`, `Merging is blocked`, and a disabled
 merge button. The PR was closed without merging; `main` remained at
-`211bb77fb2a5ccb95027d9d110e0132ff1001918`. This proves the merge gate,
-not GitHub-to-GCP authentication, which still awaits the TA's repository
-connection.
+`211bb77fb2a5ccb95027d9d110e0132ff1001918`. This proves the merge gate;
+the separate GitHub-to-GCP authentication check still requires a successful
+workflow run using the portal connection completed on 2026-11-20.
 
 ## 9. Release workflow
 
@@ -363,9 +372,21 @@ infrastructure or changes project IAM.
    verify the released change through a synthetic user journey. Record the
    result in the evidence index (C-06) and Issue #40.
 
-These steps describe the procedure only. Infrastructure is ready, but no Pockit
-image has been deployed or release run recorded. For a reviewed first release
-that needs manual deployment before WIF is connected, run
+The separately reviewed PR #66 merged `lab5` to `main` at
+`01c298717b1809ec220eed8906d9a9508a673f85`. Main
+[CI run 44750632611](https://github.com/CPE334-Pockit/Pockit/actions/runs/44750632611)
+passed. The triggered
+[deployment run 44751105668](https://github.com/CPE334-Pockit/Pockit/actions/runs/44751105668)
+failed at `Validate university GitHub connection`: `WIF_PROVIDER` and
+`WIF_SERVICE_ACCOUNT` were empty in the workflow's former `production`
+environment.
+The authentication, build, migration, service update and smoke steps were all
+skipped. No Pockit image has been deployed or live revision recorded. Once the
+workflow's `demo` environment change is reviewed and merged to `main`, its
+passing CI run should trigger a fresh deploy. Ensure app secret slot 2 has the
+team-chosen course User password before that release.
+
+For a manual deployment fallback, run
 `DRY_RUN=1 bash deploy/course-first-deploy.sh` and inspect its commands; after
 the reviewed commit reaches a clean local `main`, run
 `DRY_RUN=0 bash deploy/course-first-deploy.sh`. The script validates the
@@ -373,14 +394,18 @@ course project and existing team resources, builds an amd64 image, stops if
 migrations fail, and updates only the team's existing service. This manual
 first deployment does not satisfy the GitHub Actions release criterion.
 
-The currently reviewed workflow uses the portal-assigned project, region,
-prefix, and URL. Before the first GitHub release, reconcile it with the new
-portal-generated workflow and four variables for the `demo` environment. The
-portal also requires a root Dockerfile; a plain
+The workflow uses the portal-assigned project, region, prefix, and URL. It was
+compared with the downloaded portal workflow and retains the Pockit-specific
+exact-SHA CI gate, migrations before traffic, one-time identity bootstrap, and
+public smoke checks. Its GitHub environment is `demo`, restricted to `main`,
+with `GCP_PROJECT_ID`, `GCP_REGION`, `WIF_PROVIDER`, `WIF_SERVICE_ACCOUNT`, and
+`APP_PORT=3000` configured as non-secret environment variables. The portal also
+requires a root Dockerfile; a plain
 `docker build --platform linux/amd64 -t pockit-portal-root-check .` passed
-locally without build arguments or secrets. Set the portal's `APP_PORT` to
-`3000` because the root image listens on 3000, and ensure its migration command
-is `bun run db:migrate:deploy` followed by Pockit's course User bootstrap.
+locally without build arguments or secrets. The workflow directly runs
+`bun run db:migrate:deploy` and Pockit's course User bootstrap; it does not
+depend on the optional `MIGRATE_COMMAND` variable used by the generic portal
+workflow.
 The portal-assigned deployer identity is
 `s4b043a2c-deployer@cpe-se-course-2026.iam.gserviceaccount.com`.
 The existing runtime identity is `s4b043a2c-runner@cpe-se-course-2026.iam.gserviceaccount.com`;
