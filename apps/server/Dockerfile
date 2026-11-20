@@ -3,6 +3,7 @@ WORKDIR /app
 
 COPY . .
 RUN --mount=type=secret,id=web_env,target=/app/apps/web/.env.local --mount=type=secret,id=server_env,target=/app/apps/server/.env.local --mount=type=cache,target=/root/.bun/install/cache bun install
+RUN --mount=type=secret,id=server_env,target=/app/apps/server/.env.local bun run db:generate
 
 ENV NODE_ENV=production
 RUN --mount=type=secret,id=web_env,target=/app/apps/web/.env.local --mount=type=secret,id=server_env,target=/app/apps/server/.env.local cd apps/server && bun run build

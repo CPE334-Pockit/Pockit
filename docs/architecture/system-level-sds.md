@@ -2,7 +2,7 @@
 
 **Version:** 0.1 — Sprint 1 design baseline
 **Status:** Baseline reviewed and merged in PR #20; refined by Sprint 1 contracts in PR #22 and implementation decisions in ADR-0001/0002 and PR #23.
-**Parent:** [Issue #5 — Sprint 1: System-Level SDS](https://github.com/ovenmakemeheat/Pockit/issues/5)
+**Parent:** [Issue #5 — Sprint 1: System-Level SDS](https://github.com/CPE334-Pockit/Pockit/issues/5)
 **Requirements baseline:** [Software Requirements Specification](../requirements/srs.md)
 **Project brief:** `docs/assignments/final/group_work_specs_v1.pdf`, section 6, theme 7
 

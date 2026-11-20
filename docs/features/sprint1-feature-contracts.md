@@ -1,8 +1,8 @@
 # Sprint 1 Feature-Level Software Design Specifications
 
 **Version:** 0.1 — accepted baseline, reviewed and merged before implementation in PR #22<br>
-**Issue:** [#7 — Sprint 1: Engineering contracts](https://github.com/ovenmakemeheat/Pockit/issues/7)<br>
-**Implementation parent:** [#8 — Sprint 1 implementation](https://github.com/ovenmakemeheat/Pockit/issues/8)<br>
+**Issue:** [#7 — Sprint 1: Engineering contracts](https://github.com/CPE334-Pockit/Pockit/issues/7)<br>
+**Implementation parent:** [#8 — Sprint 1 implementation](https://github.com/CPE334-Pockit/Pockit/issues/8)<br>
 **Sources:** [SRS](../requirements/srs.md), [Feature Inventory](../requirements/feature-inventory.md), [System-Level SDS](../architecture/system-level-sds.md), [Three-Sprint Plan](../planning/three-sprint-plan.md), and Theme 7 of the approved course brief.
 
 > **Approval status:** The baseline contract was reviewed and merged in PR #22 before Issue #8 implementation began. Sprint 1 decision updates are recorded in [ADR-0001](../adr/0001-sprint1-money-and-date-policies.md); the delegated THB choice and the reported team/course-confirmed policies are surfaced for specific teammate review in the Issue #8 PR. Remaining OQ-04/05/06 and the future OQ-01/07 scope stay open. No implementation silently resolves those remaining questions.

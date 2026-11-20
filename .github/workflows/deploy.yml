@@ -1,0 +1,126 @@
+name: Deploy Pockit
+
+on:
+  workflow_run:
+    workflows: [CI and Docker]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+  id-token: write
+
+concurrency:
+  group: pockit-course-deploy
+  cancel-in-progress: false
+
+env:
+  PROJECT_ID: cpe-se-course-2026
+  REGION: asia-southeast1
+  PREFIX: s4b043a2c
+  SERVICE_URL: https://s4b043a2c-4d7hbszvwq-as.a.run.app
+  RELEASE_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+
+jobs:
+  deploy:
+    name: deploy-${{ github.event.workflow_run.head_sha || github.sha }}
+    runs-on: ubuntu-latest
+    environment: production
+    if: >-
+      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
+      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main' && github.event.workflow_run.head_repository.full_name == github.repository)
+
+    steps:
+      - name: Check out reviewed release commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.RELEASE_SHA }}
+
+      - name: Confirm this is the latest reviewed main commit
+        run: |
+          git fetch --quiet origin main
+          test "${RELEASE_SHA}" = "$(git rev-parse origin/main)"
+
+      - name: Require passing CI on manual release SHA
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          runs="$(gh api --method GET "repos/${GITHUB_REPOSITORY}/actions/workflows/ci-docker.yml/runs" \
+            -f head_sha="${RELEASE_SHA}" -f branch=main -f status=success -f per_page=100)"
+          printf '%s' "${runs}" | jq -e --arg sha "${RELEASE_SHA}" \
+            '.workflow_runs | any(.head_sha == $sha and .head_branch == "main" and .conclusion == "success")'
+
+      - name: Validate university GitHub connection
+        env:
+          WIF_PROVIDER: ${{ vars.WIF_PROVIDER }}
+          WIF_SERVICE_ACCOUNT: ${{ vars.WIF_SERVICE_ACCOUNT }}
+        run: |
+          test -n "${WIF_PROVIDER}" || { echo 'TA must connect this repository to the team WIF provider'; exit 1; }
+          test -n "${WIF_SERVICE_ACCOUNT}" || { echo 'TA must provide the team deployer service account'; exit 1; }
+          test "${WIF_SERVICE_ACCOUNT}" = "${PREFIX}-deployer@${PROJECT_ID}.iam.gserviceaccount.com"
+          [[ "${RELEASE_SHA}" =~ ^[0-9a-f]{40}$ ]]
+
+      - name: Authenticate without a service-account key
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.WIF_PROVIDER }}
+          service_account: ${{ vars.WIF_SERVICE_ACCOUNT }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Confirm only team resources exist
+        run: |
+          gcloud run services describe "${PREFIX}" --project="${PROJECT_ID}" --region="${REGION}" >/dev/null
+          gcloud run jobs describe "${PREFIX}-migrate" --project="${PROJECT_ID}" --region="${REGION}" >/dev/null
+
+      - name: Build and push unified web and API image
+        run: |
+          gcloud auth configure-docker "${REGION}-docker.pkg.dev" --quiet
+          IMAGE="${REGION}-docker.pkg.dev/${PROJECT_ID}/${PREFIX}/${PREFIX}:${RELEASE_SHA}"
+          docker build --platform linux/amd64 -f Dockerfile \
+            --build-arg "VITE_SERVER_URL=${SERVICE_URL}" \
+            --secret id=web_env,src=apps/web/.env.example \
+            --secret id=server_env,src=apps/server/.env.example \
+            -t "${IMAGE}" .
+          docker push "${IMAGE}"
+          echo "IMAGE=${IMAGE}" >> "${GITHUB_ENV}"
+
+      - name: Apply checked-in database migrations
+        run: |
+          gcloud run jobs update "${PREFIX}-migrate" \
+            --image="${IMAGE}" --command=bun --args=run,db:migrate:deploy \
+            --update-env-vars=NODE_ENV=production \
+            --project="${PROJECT_ID}" --region="${REGION}" --quiet
+          gcloud run jobs execute "${PREFIX}-migrate" \
+            --wait --project="${PROJECT_ID}" --region="${REGION}" --quiet
+
+      - name: Provision the course User once
+        run: |
+          gcloud run jobs update "${PREFIX}-migrate" \
+            --image="${IMAGE}" --command=bun --args=apps/server/src/bootstrap-course.ts \
+            --update-secrets="POCKIT_BOOTSTRAP_PASSWORD=${PREFIX}-app-secret-2:latest" \
+            --project="${PROJECT_ID}" --region="${REGION}" --quiet
+          gcloud run jobs execute "${PREFIX}-migrate" \
+            --wait --project="${PROJECT_ID}" --region="${REGION}" --quiet
+
+      - name: Update the pre-provisioned team service
+        run: |
+          gcloud run services update "${PREFIX}" \
+            --image="${IMAGE}" --port=3000 --memory=1Gi --cpu=1 \
+            --min-instances=0 --max-instances=1 \
+            --update-env-vars="NODE_ENV=production,BETTER_AUTH_URL=${SERVICE_URL},CORS_ORIGIN=${SERVICE_URL},VITE_SERVER_URL=${SERVICE_URL}" \
+            --update-secrets="BETTER_AUTH_SECRET=${PREFIX}-app-secret-1:latest" \
+            --project="${PROJECT_ID}" --region="${REGION}" --quiet
+
+      - name: Smoke test public web and API
+        run: |
+          curl --fail --show-error --connect-timeout 5 --max-time 15 --retry 5 --retry-delay 3 "${SERVICE_URL}/api/health"
+          curl --fail --show-error --connect-timeout 5 --max-time 15 --retry 5 --retry-delay 3 "${SERVICE_URL}/api/ready"
+          curl --fail --show-error --connect-timeout 5 --max-time 15 --retry 5 --retry-delay 3 "${SERVICE_URL}/" >/dev/null
+          echo "Released commit: ${RELEASE_SHA}"
+          echo "Image: ${IMAGE}"
+          echo "Public URL: ${SERVICE_URL}"

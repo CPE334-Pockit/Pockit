@@ -1,8 +1,8 @@
 # Three-Sprint Product Plan — Pockit
 
 **Version:** 0.1 — roadmap reviewed and merged in PR #21; later-sprint feature placement remains proposed until team planning
-**Issue:** [#6 — Sprint 1: Three-sprint plan](https://github.com/ovenmakemeheat/Pockit/issues/6)
-**Parent:** [#2 — Sprint 1: Baseline and working increment](https://github.com/ovenmakemeheat/Pockit/issues/2)
+**Issue:** [#6 — Sprint 1: Three-sprint plan](https://github.com/CPE334-Pockit/Pockit/issues/6)
+**Parent:** [#2 — Sprint 1: Baseline and working increment](https://github.com/CPE334-Pockit/Pockit/issues/2)
 **Requirements:** [SRS](../requirements/srs.md)
 **Feature traceability:** [Feature inventory](../requirements/feature-inventory.md)
 **System design:** [System-Level SDS](../architecture/system-level-sds.md)
