@@ -16,7 +16,7 @@ connection strings, API keys, service-account keys, or other secrets here.
 | GCP project ID | `cpe-se-course-2026` (shared course project) |
 | GCP region | `asia-southeast1` |
 | Team prefix | `s4b043a2c` assigned by the course portal |
-| Reserved public service URL | `https://s4b043a2c-4d7hbszvwq-as.a.run.app` (the placeholder is present; Pockit is not deployed yet) |
+| Public service URL | `https://s4b043a2c-4d7hbszvwq-as.a.run.app` (Pockit revision `s4b043a2c-00002-82b` serves 100% of traffic) |
 
 ## 2.1 GCP deployment plan
 
@@ -36,7 +36,7 @@ plan for the shared course environment.
 | Runtime service account | `s4b043a2c-runner@cpe-se-course-2026.iam.gserviceaccount.com` | Existing team runtime identity. |
 | Secret Manager secret | `s4b043a2c-database-url` | Portal-created database connection; value is never copied into the repo. |
 | Secret Manager secret | `s4b043a2c-app-secret-1` | Pockit's Better Auth signing secret; random value stored as version 1 on 2026-11-19 without displaying it. |
-| Secret Manager secret | `s4b043a2c-app-secret-2` | Team-chosen course User password; add a version before the first release. No version has been verified yet. |
+| Secret Manager secret | `s4b043a2c-app-secret-2` | Team-chosen course User password. The bootstrap job completed using this secret reference; its value was not read or recorded. |
 
 Deployment order:
 
@@ -66,8 +66,8 @@ portal. On 2026-11-19, the approved Google account signed in to the portal for
 team PEEEEEEJA. The portal completed all six provisioning steps. A read-only
 `gcloud sql instances describe s4b043a2c-pg --project=cpe-se-course-2026`
 returned `RUNNABLE` in `asia-southeast1`; read-only describes confirmed the
-existing service and migration job. The service still runs the portal placeholder
-image. [Issue #35](https://github.com/CPE334-Pockit/Pockit/issues/35) tracks
+existing service and migration job. At setup time the service ran the portal
+placeholder image; the first Pockit deployment is recorded below. [Issue #35](https://github.com/CPE334-Pockit/Pockit/issues/35) tracks
 team access and the centrally managed budget question. The
 [portal completion screenshot](artifacts/course-ready-2026-11-19.png) shows all
 six steps complete; the [resource screenshot](artifacts/course-resources-2026-11-19.png)
@@ -381,10 +381,9 @@ failed at `Validate university GitHub connection`: `WIF_PROVIDER` and
 `WIF_SERVICE_ACCOUNT` were empty in the workflow's former `production`
 environment.
 The authentication, build, migration, service update and smoke steps were all
-skipped. No Pockit image has been deployed or live revision recorded. Once the
-workflow's `demo` environment change is reviewed and merged to `main`, its
-passing CI run should trigger a fresh deploy. Ensure app secret slot 2 has the
-team-chosen course User password before that release.
+skipped. This is the historical first attempt, before the `demo` environment
+change reached `main` in [release PR #70](https://github.com/CPE334-Pockit/Pockit/pull/70).
+The later WIF attempts and first manual Pockit deployment are recorded below.
 
 For a manual deployment fallback, run
 `DRY_RUN=1 bash deploy/course-first-deploy.sh` and inspect its commands; after
@@ -413,4 +412,47 @@ the portal already mapped `DATABASE_URL` and attached Cloud SQL to the service
 and job. The deploy adds `BETTER_AUTH_SECRET` from app secret slot 1 without
 replacing the database mapping. Record the workflow URL, image tag/digest,
 serving revision, smoke-test result, and release commit for Issue #40.
+
+### First public Pockit deployment (2026-11-20)
+
+[Release PR #70](https://github.com/CPE334-Pockit/Pockit/pull/70) merged the
+portal `demo` environment change to `main` at full commit
+`5256b3cd7b9269dc32db5bd10abfe401bbaeb958`.
+[Main CI run 44756809917](https://github.com/CPE334-Pockit/Pockit/actions/runs/44756809917)
+passed. The [automatic deployment run 44757283437](https://github.com/CPE334-Pockit/Pockit/actions/runs/44757283437)
+and [manual dispatch run 44757614254](https://github.com/CPE334-Pockit/Pockit/actions/runs/44757614254)
+both passed exact-SHA/variable checks but failed at keyless authentication:
+`unauthorized_client: The given credential is rejected by the attribute
+condition`. The team account cannot read the course provider condition
+(`iam.workloadIdentityPoolProviders.get` denied). No GitHub Actions deployment
+has succeeded; the TA must inspect the provider's binding for this repo,
+`main`, `.github/workflows/deploy.yml`, and `demo`.
+
+To verify the application while WIF is blocked, an isolated clean `main`
+worktree at the release commit ran:
+
+1. `DRY_RUN=1 bash deploy/course-first-deploy.sh` — passed; the printed
+   commands targeted only prefix `s4b043a2c` in project
+   `cpe-se-course-2026`, region `asia-southeast1`.
+2. `DRY_RUN=0 bash deploy/course-first-deploy.sh` — passed; the script
+   verified local `main` equaled `origin/main`, built and pushed the amd64
+   image, waited for migration and course User bootstrap, updated the existing
+   service, then checked health, readiness and web root.
+
+| Result | Observed evidence |
+| --- | --- |
+| Image tag | `asia-southeast1-docker.pkg.dev/cpe-se-course-2026/s4b043a2c/s4b043a2c:5256b3cd7b9269dc32db5bd10abfe401bbaeb958` |
+| Registry manifest-list digest | `sha256:5e206e635ecab27b398360265c4f0cdf955ca746ab612270ba6b5d0f77790e3b` from Docker push |
+| Migration | Execution `s4b043a2c-migrate-2vpgq`, `Completed=True` at `2026-11-20T14:59:52Z` |
+| Course User bootstrap | Execution `s4b043a2c-migrate-7gfpq`, `Completed=True` at `2026-11-20T15:00:18Z`; the job references secret `s4b043a2c-app-secret-2:latest` without exposing its value |
+| Cloud Run | Service `s4b043a2c` revision `s4b043a2c-00002-82b` Ready and serving 100% at `https://s4b043a2c-4d7hbszvwq-as.a.run.app` |
+| Serving image | Revision digest `sha256:015061e172242f39cc28fba2a59618076ea2fb685b509cf98835700eac391eee` (selected platform manifest); service config retains full release SHA image tag |
+| Public paths | `GET /`, `/login`, `/api/health`, and `/api/ready` each returned HTTP 200. Readiness body: `{"status":"ready","db":"connected"}`. The browser home page identified Pockit. |
+| Access restriction | Unauthenticated `GET /trpc/finance.accounts.list` returned HTTP 401, `Authentication required`. |
+| Runtime secrets | Service config maps `DATABASE_URL` to `s4b043a2c-database-url:latest` and `BETTER_AUTH_SECRET` to `s4b043a2c-app-secret-1:latest`; no values were read or committed. |
+
+This proves public web/API/database readiness and an unauthenticated access
+restriction. Sign-in and a successful financial action through the public URL
+remain to be observed. The final Lab 5 report also needs before/after restart
+and redeployment evidence for the same synthetic financial record.
 

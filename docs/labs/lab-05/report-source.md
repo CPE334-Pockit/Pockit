@@ -19,11 +19,11 @@ Topic: 7 — Personal Money and Expense Logging System (Pockit).
   preparatory evidence index and report source into `lab5` at
   `9ca079f4f4c48f9d85e1a63861c7de7bf3e54469`; this follow-up records
   the completed C-02 demonstration and repository migration.
-- Submitted tag or full commit: **pending reviewed release**.
-- Public web/API URL: **reserved** at `https://s4b043a2c-4d7hbszvwq-as.a.run.app`; Pockit serving commit **pending deployment**.
+- Reviewed release commit: `5256b3cd7b9269dc32db5bd10abfe401bbaeb958` ([PR #70](https://github.com/CPE334-Pockit/Pockit/pull/70)); final submitted tag pending.
+- Public web/API URL: `https://s4b043a2c-4d7hbszvwq-as.a.run.app`; Pockit revision `s4b043a2c-00002-82b` serves the reviewed commit after a manual deployment.
 - [C-01 through C-06 evidence index](evidence-index.md). C-01 and C-02 are
   verified; C-03 has integrated local Docker evidence. C-04 through C-06 remain
-  incomplete until the public GCP release and persistence checks run.
+  incomplete until signed-in public workflow, GitHub Actions release and persistence checks run.
 
 ## Answer Part 1: CI and Quality Gate
 
@@ -62,8 +62,12 @@ The university portal prepared team PEEEEEEJA's resources on 2026-11-19 in
 `cpe-se-course-2026` / `asia-southeast1`, including one Cloud SQL instance and
 the reserved public URL above. The [portal completion](artifacts/course-ready-2026-11-19.png)
 and [resource record](artifacts/course-resources-2026-11-19.png) are setup
-evidence. Pockit has not yet replaced the placeholder. There is no deployed
-Pockit revision or before/after cloud restart/redeploy screenshot.
+evidence. Pockit replaced the placeholder by a manual deployment of reviewed
+commit `5256b3c`: migration and course User bootstrap completed, and revision
+`s4b043a2c-00002-82b` serves 100% of traffic. The public root, login, health
+and readiness paths returned HTTP 200; an unauthenticated finance read returned
+HTTP 401. There is still no signed-in financial journey or before/after cloud
+restart/redeploy screenshot.
 The local Compose restart retained three synthetic Users, but this does not
 prove C-04 or C-05 on GCP. Add direct URLs and numbered, readable screenshots
 with the public URL and serving commit when the cloud workflow is tested.
@@ -74,6 +78,11 @@ with the public URL and serving commit when the cloud workflow is tested.
   is present on `lab5`. [PR #56](https://github.com/CPE334-Pockit/Pockit/pull/56)
   documents the release sequence; it was reviewed and merged into `lab5` at
   `30ac9e8a50a28460193a07a3e743179c5965ac6f`.
-- Reviewed release PR `lab5` → `main`, passing CI on the release SHA, successful
-  deployment run, Cloud Run revisions, image digests and live smoke result:
-  **pending the portal's new GitHub connection flow and reviewed release** (C-06).
+- [Release PR #70](https://github.com/CPE334-Pockit/Pockit/pull/70) merged
+  `lab5` → `main` at `5256b3c`; [main CI](https://github.com/CPE334-Pockit/Pockit/actions/runs/44756809917)
+  passed. [Automatic deploy](https://github.com/CPE334-Pockit/Pockit/actions/runs/44757283437)
+  and [manual dispatch](https://github.com/CPE334-Pockit/Pockit/actions/runs/44757614254)
+  both failed at the course WIF provider's attribute condition before updating
+  GCP. A separate manual deployment of the same image succeeded and its Cloud
+  Run revision/digest are recorded in [deployment.md](deployment.md). C-06
+  still needs a successful GitHub Actions deployment and live workflow evidence.
