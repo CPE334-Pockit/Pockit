@@ -93,7 +93,7 @@ local verification, not evidence that Pockit is deployed on GCP.
 
 | Command or check | Result |
 | --- | --- |
-| `docker build --platform linux/amd64 -f deploy/Dockerfile.course --build-arg VITE_SERVER_URL=https://s4b043a2c-4d7hbszvwq-as.a.run.app --secret id=web_env,src=apps/web/.env.example --secret id=server_env,src=apps/server/.env.example -t pockit-course-release-check .` | Built successfully. The final image contains the public URL in its runtime environment and client assets; no real secret was used at build time. |
+| `docker build --platform linux/amd64 -f deploy/Dockerfile.course --build-arg VITE_SERVER_URL=https://s4b043a2c-4d7hbszvwq-as.a.run.app --secret id=web_env,src=apps/web/.env.example --secret id=server_env,src=apps/server/.env.example -t pockit-course-release-check .` | Passed on the earlier PR #65 source. The Dockerfile was later moved to the repository root for the university portal connector; this row is the historical command actually run. |
 | `POCKIT_POSTGRES_PORT=15434 docker compose -p pockit-course-check -f docker-compose.db.yml up -d` | Started a new isolated local PostgreSQL container and volume without touching other services. |
 | `docker run --rm --network pockit-course-check_default ... pockit-course-local bun run db:migrate:deploy` | Applied all four checked-in migrations to the isolated database. The omitted argument was a synthetic local-only connection URL. |
 | Run the production-built course image on localhost:3000, then request `/api/health`, `/api/ready`, `/`, and `/login` | Health returned `ok`, readiness returned `db: connected`, web root and login both returned HTTP 200. The first attempt exposed a missing runtime `VITE_SERVER_URL`; the Dockerfile was fixed to carry the build argument into the runner stage. |
@@ -262,12 +262,15 @@ final evidence index.
 
 GitHub Actions must authenticate to GCP with Workload Identity Federation or an
 equivalent keyless mechanism. Do not download, commit, or place a service-account
-JSON key in GitHub Actions secrets. The course portal did not connect this
-repository because its existing deployment layout differs from the Starter Kit.
-The team will ask the TA to connect `CPE334-Pockit/Pockit` to prefix
-`s4b043a2c` and provide the non-secret `WIF_PROVIDER` and
-`WIF_SERVICE_ACCOUNT` identifiers. The `production` environment must be
-restricted to `main`. Runtime secrets remain in Secret Manager.
+JSON key in GitHub Actions secrets. On 2026-11-20, the TA enabled a new portal
+path for public non-Starter-Kit repositories with a root `Dockerfile`. The
+portal inspected `CPE334-Pockit/Pockit` at `main` commit `211bb77` and offered
+to connect it despite its different layout, but `main` had no root Dockerfile.
+The course image Dockerfile is now moved to the root; the portal connection
+remains pending until this change reaches `main`. The portal will then display
+four GitHub variables for the `demo` environment and a generated workflow.
+Review that workflow against Pockit's migration, bootstrap, port 3000, and
+release checks before using it. Runtime secrets remain in Secret Manager.
 
 Configure the `main` branch ruleset with:
 
@@ -332,7 +335,7 @@ If the bootstrap job fails, the service update does not run. The local
 
 `.github/workflows/deploy.yml` runs after the `CI and Docker` workflow succeeds on
 the exact `main` commit, or by manual dispatch after checking a successful CI
-run for that same SHA. Once the TA enables WIF, it
+run for that same SHA. Once the portal GitHub connection is completed, it
 authenticates without a key, builds the single course image tagged with the full
 commit SHA, pushes it to the team's existing Artifact Registry repository,
 updates and executes the existing migration job, runs the course User bootstrap,
@@ -370,10 +373,16 @@ course project and existing team resources, builds an amd64 image, stops if
 migrations fail, and updates only the team's existing service. This manual
 first deployment does not satisfy the GitHub Actions release criterion.
 
-The workflow uses the portal-assigned project, region, prefix, and URL. The
-`production` environment needs the non-secret `WIF_PROVIDER` and
-`WIF_SERVICE_ACCOUNT` variables once the TA connects GitHub. The latter must
-equal `s4b043a2c-deployer@cpe-se-course-2026.iam.gserviceaccount.com`.
+The currently reviewed workflow uses the portal-assigned project, region,
+prefix, and URL. Before the first GitHub release, reconcile it with the new
+portal-generated workflow and four variables for the `demo` environment. The
+portal also requires a root Dockerfile; a plain
+`docker build --platform linux/amd64 -t pockit-portal-root-check .` passed
+locally without build arguments or secrets. Set the portal's `APP_PORT` to
+`3000` because the root image listens on 3000, and ensure its migration command
+is `bun run db:migrate:deploy` followed by Pockit's course User bootstrap.
+The portal-assigned deployer identity is
+`s4b043a2c-deployer@cpe-se-course-2026.iam.gserviceaccount.com`.
 The existing runtime identity is `s4b043a2c-runner@cpe-se-course-2026.iam.gserviceaccount.com`;
 the portal already mapped `DATABASE_URL` and attached Cloud SQL to the service
 and job. The deploy adds `BETTER_AUTH_SECRET` from app secret slot 1 without

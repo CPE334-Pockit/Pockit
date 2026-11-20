@@ -81,7 +81,7 @@ jobs:
         run: |
           gcloud auth configure-docker "${REGION}-docker.pkg.dev" --quiet
           IMAGE="${REGION}-docker.pkg.dev/${PROJECT_ID}/${PREFIX}/${PREFIX}:${RELEASE_SHA}"
-          docker build --platform linux/amd64 -f deploy/Dockerfile.course \
+          docker build --platform linux/amd64 -f Dockerfile \
             --build-arg "VITE_SERVER_URL=${SERVICE_URL}" \
             --secret id=web_env,src=apps/web/.env.example \
             --secret id=server_env,src=apps/server/.env.example \

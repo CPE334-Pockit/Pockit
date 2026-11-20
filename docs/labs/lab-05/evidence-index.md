@@ -12,8 +12,9 @@ and reserved Cloud Run URL
 [completion screenshot](artifacts/course-ready-2026-11-19.png) and
 [resource screenshot](artifacts/course-resources-2026-11-19.png) contain no
 credentials. The service still runs a portal placeholder, so this is
-infrastructure evidence only. The portal could not connect the non-Starter-Kit
-repository; the team is asking the TA to enable GitHub WIF. There is no
+infrastructure evidence only. On 2026-11-20, the TA enabled a new portal
+connection path for non-Starter-Kit repositories; a root Dockerfile change is
+under review before connecting this repository. There is no
 Pockit deployment, released revision, or cloud persistence result yet.
 
 ## Verified repository evidence
@@ -25,7 +26,7 @@ Pockit deployment, released revision, or cloud persistence result yet.
 | C-03 (R-01, R-02) | [PR #57](https://github.com/CPE334-Pockit/Pockit/pull/57), separate fresh checkout of `lab5` at `3c7a7e9` with only ignored synthetic `.env` files and the Dockerfile fix: `docker compose -p pockit-lab5-clean build --quiet`, `up`, migration/seed one-off commands and HTTP checks. | Initial fresh build failed because Prisma Client was not generated inside the image. After the fix, both images built, four migrations applied, three synthetic Users and ten accounts seeded; API ready and web HTTP 200. A separate local browser journey verified login, finance actions and allocation rejection. Teammate reviewed and merged PR #57 into `lab5` at `43d471f4bac4d17a4c2a4bd61ae74b6e4aa40e9a`. | `3c7a7e9fba6fec20c50a2e504d7e71fbe720c061` plus Dockerfile fix `42f67d6827000d6ab144f549171be0daf6517219` and evidence head `044438f2de1af59842e7ff1714ef5a0d1d92ea0b` | None for local Docker proof; cloud deployment remains C-04/C-05. |
 | C-04 (R-03) | The portal reserved the [team Cloud Run URL](https://s4b043a2c-4d7hbszvwq-as.a.run.app), but it still serves a placeholder. | Pockit public workflow unverified. | None | Deploy Pockit, then capture login, successful financial action, and rejection with the same public URL visible. |
 | C-05 (R-04) | Local `docker compose -p pockit-lab5-audit restart server web`, PostgreSQL User count query before/after and `/api/ready`; [PR #57](https://github.com/CPE334-Pockit/Pockit/pull/57). | Local synthetic User count stayed 3 and API reconnected to PostgreSQL after application container restart. No cloud restart/redeploy evidence. | `499f02b67c101699a5e302b23fa4adf3fd4e4aa3` | On GCP, capture the same recognizable financial record before/after application restart and redeployment with URLs, screenshots, revisions and commit. |
-| C-06 (R-07–R-10) | The earlier deployment workflow is merged into `lab5`, but targets resource names superseded by the university portal. Its single-service adaptation is under review on the existing #38 branch. No release PR into `main` or successful deployment run is linked. | Unverified. | None | Obtain WIF from the TA, then link teammate-reviewed release PR, passing CI on `main`, successful deploy run and Cloud Run revision/image matching full release SHA. |
+| C-06 (R-07–R-10) | Course single-service workflow changes from [PR #65](https://github.com/CPE334-Pockit/Pockit/pull/65) and [PR #67](https://github.com/CPE334-Pockit/Pockit/pull/67) are merged into `lab5`. [Release PR #66](https://github.com/CPE334-Pockit/Pockit/pull/66) targets `main` but is not merged. The updated portal now supports this non-Starter-Kit repo once it has a root Dockerfile on `main`. | Unverified. | None | Connect the repo through the portal, reconcile its generated workflow and `demo` variables, then link the reviewed release, passing CI on `main`, successful deploy and Cloud Run revision/image matching full release SHA. |
 
 ## Issue #41 acceptance status
 
