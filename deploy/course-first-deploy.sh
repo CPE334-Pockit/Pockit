@@ -54,7 +54,7 @@ fi
 
 IMAGE="${IMAGE_BASE}:${SHA}"
 run gcloud auth configure-docker "${REGION}-docker.pkg.dev" --quiet
-run docker build --platform linux/amd64 -f deploy/Dockerfile.course \
+run docker build --platform linux/amd64 -f Dockerfile \
   --build-arg "VITE_SERVER_URL=${SERVICE_URL}" \
   --secret id=web_env,src=apps/web/.env.example \
   --secret id=server_env,src=apps/server/.env.example \

@@ -76,4 +76,4 @@ with the public URL and serving commit when the cloud workflow is tested.
   `30ac9e8a50a28460193a07a3e743179c5965ac6f`.
 - Reviewed release PR `lab5` → `main`, passing CI on the release SHA, successful
   deployment run, Cloud Run revisions, image digests and live smoke result:
-  **pending TA-enabled GitHub WIF and reviewed release** (C-06).
+  **pending the portal's new GitHub connection flow and reviewed release** (C-06).
