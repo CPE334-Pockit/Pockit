@@ -20,7 +20,7 @@ Topic: 7 — Personal Money and Expense Logging System (Pockit).
   `9ca079f4f4c48f9d85e1a63861c7de7bf3e54469`; this follow-up records
   the completed C-02 demonstration and repository migration.
 - Submitted tag or full commit: **pending reviewed release**.
-- Public web/API URLs and serving commit: **pending GCP access**.
+- Public web/API URL: **reserved** at `https://s4b043a2c-4d7hbszvwq-as.a.run.app`; Pockit serving commit **pending deployment**.
 - [C-01 through C-06 evidence index](evidence-index.md). C-01 and C-02 are
   verified; C-03 has integrated local Docker evidence. C-04 through C-06 remain
   incomplete until the public GCP release and persistence checks run.
@@ -58,10 +58,12 @@ Topic: 7 — Personal Money and Expense Logging System (Pockit).
 
 ## Answer Part 3: GCP Deployment and Persistence
 
-**Pending university GCP budget/access.** On 2026-11-18 the team reported that
-it had informed the TA and is awaiting a response; TA acknowledgement and
-billing approval have not been verified. There is no public URL, Cloud SQL
-instance, deployed revision, or before/after cloud restart/redeploy screenshot.
+The university portal prepared team PEEEEEEJA's resources on 2026-11-19 in
+`cpe-se-course-2026` / `asia-southeast1`, including one Cloud SQL instance and
+the reserved public URL above. The [portal completion](artifacts/course-ready-2026-11-19.png)
+and [resource record](artifacts/course-resources-2026-11-19.png) are setup
+evidence. Pockit has not yet replaced the placeholder. There is no deployed
+Pockit revision or before/after cloud restart/redeploy screenshot.
 The local Compose restart retained three synthetic Users, but this does not
 prove C-04 or C-05 on GCP. Add direct URLs and numbered, readable screenshots
 with the public URL and serving commit when the cloud workflow is tested.
@@ -74,4 +76,4 @@ with the public URL and serving commit when the cloud workflow is tested.
   `30ac9e8a50a28460193a07a3e743179c5965ac6f`.
 - Reviewed release PR `lab5` → `main`, passing CI on the release SHA, successful
   deployment run, Cloud Run revisions, image digests and live smoke result:
-  **pending GCP access and release** (C-06).
+  **pending TA-enabled GitHub WIF and reviewed release** (C-06).

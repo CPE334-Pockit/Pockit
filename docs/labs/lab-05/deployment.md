@@ -10,59 +10,95 @@ connection strings, API keys, service-account keys, or other secrets here.
 | --- | --- |
 | Repository | `https://github.com/CPE334-Pockit/Pockit` |
 | Lab 5 staging branch | `lab5` |
-| Current Issue | [#41](https://github.com/CPE334-Pockit/Pockit/issues/41) |
-| Working branch | `lab5-final-evidence` |
+| Current deployment Issue | [#38](https://github.com/CPE334-Pockit/Pockit/issues/38) |
+| Working branch | `lab5-gcp-deploy` |
 | Sprint 1 baseline commit | `e99da77` |
-| GCP project ID | Pending: Free Trial access problem; team reports TA informed on 2026-11-18 and awaits university budget arrangement |
-| GCP region | Pending GCP project setup |
-| Public service URL | No deployment yet |
+| GCP project ID | `cpe-se-course-2026` (shared course project) |
+| GCP region | `asia-southeast1` |
+| Team prefix | `s4b043a2c` assigned by the course portal |
+| Reserved public service URL | `https://s4b043a2c-4d7hbszvwq-as.a.run.app` (the placeholder is present; Pockit is not deployed yet) |
 
 ## 2.1 GCP deployment plan
 
-Pockit uses separate web and API containers, so the first deployment uses two
-Cloud Run services backed by one Cloud SQL PostgreSQL instance:
+The course portal completed resource provisioning on 2026-11-19 at 19:15:54 ICT.
+It allocated **one** Cloud Run service and one Cloud SQL PostgreSQL instance to
+this team. Pockit retains separate web and API processes inside one course
+container; `deploy/course-entry.ts` routes `/api/*` and `/trpc/*` to the API
+and other paths to the SSR web process. This replaces the original two-service
+plan for the shared course environment.
 
-| Resource | Planned name | Purpose |
+| Resource | Portal-assigned name | Purpose |
 | --- | --- | --- |
-| Artifact Registry repository | `pockit` | Stores immutable web and API images. |
-| Cloud SQL instance | `pockit-pg` | Persistent PostgreSQL data. |
-| Cloud Run API service | `pockit-api` | Elysia API, authentication, and tRPC. |
-| Cloud Run web service | `pockit-web` | TanStack Start UI. |
-| Secret Manager secret | `pockit-database-url` | Cloud SQL connection string. |
-| Secret Manager secret | `pockit-auth-secret` | Better Auth signing secret. |
+| Artifact Registry repository | `s4b043a2c` | Stores the unified image tagged by the release SHA. |
+| Cloud SQL instance | `s4b043a2c-pg` | Persistent PostgreSQL database `s4b043a2c`. |
+| Cloud Run service | `s4b043a2c` | Public Pockit web and API behind one container port. |
+| Migration job | `s4b043a2c-migrate` | Runs checked-in migrations before deployment. |
+| Runtime service account | `s4b043a2c-runner@cpe-se-course-2026.iam.gserviceaccount.com` | Existing team runtime identity. |
+| Secret Manager secret | `s4b043a2c-database-url` | Portal-created database connection; value is never copied into the repo. |
+| Secret Manager secret | `s4b043a2c-app-secret-1` | Pockit's Better Auth signing secret; random value stored as version 1 on 2026-11-19 without displaying it. |
 
 Deployment order:
 
-1. Confirm billing, budget, project, region, and IAM access.
-2. Create the Artifact Registry repository and Cloud SQL instance/database.
-3. Store the database URL and authentication secret in Secret Manager.
-4. Build and deploy the API image, then record its Cloud Run URL.
-5. Build the web image with the API URL as `VITE_SERVER_URL` and deploy it.
-6. Update API CORS/trusted-origin configuration with the web URL.
-7. Run additive migrations before accepting traffic.
-8. Verify health, readiness, authentication, the Sprint 1 financial workflow, and
+1. Confirm the portal-assigned names and restricted IAM access.
+2. Build and push the unified image to the team's existing registry, tagged with
+   the full reviewed `main` commit SHA.
+3. Update and execute the existing migration job; stop if it fails.
+4. Update only the team's existing Cloud Run service with the same image and
+   public URL settings. Preserve its existing database secret and connection.
+5. Verify health, readiness, authentication, the Sprint 1 financial workflow, and
    one rejection/access restriction through the public web URL.
 
-The actual project ID, resource URLs, revisions, image digests, migration result,
-and browser evidence must be recorded after the team runs this plan in Cloud
-Shell. No GCP resource or secret is created by repository tests.
+The course portal creates infrastructure and IAM. Never run the former teardown
+script, create another Cloud SQL instance, or update another team's resources.
+The local first-deployment script and GitHub workflow only update team resources
+and use `--update-env-vars` / `--update-secrets` to preserve portal settings.
+The serving revision, image digest, migration result, and browser evidence must
+be recorded after an actual deployment.
 
 ## 2. GCP setup evidence
 
-Complete these fields only after checking the Google Cloud Console:
-
-The team reported on 2026-11-18 that it had informed the TA about the Free Trial
-problem and is awaiting a response. This is a team report, not verified TA
-acknowledgement, project access or billing approval. [Issue #35](https://github.com/CPE334-Pockit/Pockit/issues/35)
-tracks the blocker.
+The earlier personal Free Trial blocker was superseded by the shared course
+portal. On 2026-11-19, the approved Google account signed in to the portal for
+team PEEEEEEJA. The portal completed all six provisioning steps. A read-only
+`gcloud sql instances describe s4b043a2c-pg --project=cpe-se-course-2026`
+returned `RUNNABLE` in `asia-southeast1`; read-only describes confirmed the
+existing service and migration job. The service still runs the portal placeholder
+image. [Issue #35](https://github.com/CPE334-Pockit/Pockit/issues/35) tracks
+team access and the centrally managed budget question. The
+[portal completion screenshot](artifacts/course-ready-2026-11-19.png) shows all
+six steps complete; the [resource screenshot](artifacts/course-resources-2026-11-19.png)
+shows the assigned project, region, prefix, and reserved URL without credentials.
 
 | Check | Result/evidence |
 | --- | --- |
-| Approved account used | _Record account type only; do not record credentials_ |
-| Billing or Free Trial active | _Record result and date_ |
-| Teammate added to project | _Record GitHub/Google identity and role_ |
-| Alerts-only budget created | _Record budget name and threshold; hide billing details in screenshots_ |
-| Region and quota checked | _Record region and result_ |
+| Approved account used | Portal verified the registered Google account; no account identifier or credential recorded here. |
+| Billing or Free Trial active | Shared university project provisioned resources successfully; personal Free Trial is no longer the deployment path. |
+| Teammate added to project | Not yet independently verified; TA must add team members through the portal. |
+| Alerts-only budget created | Not verified; course credits are shared and the team cannot manage project-wide billing. Ask TA whether the course manages alerts centrally. |
+| Region and quota checked | Portal assigned `asia-southeast1` and Cloud SQL `db-f1-micro`; team-specific quotas were not independently verified. |
+
+### Course-image local verification (2026-11-19)
+
+The image and gateway changes were tested on the existing `lab5-gcp-deploy`
+branch after fast-forwarding it to `lab5` merge commit
+`0b3364660da8b6d4ccc7839846e328701edcfd7e`. Local image and runtime
+checks used change commit `eba7db6dbc663e2d617652f52cdfc2ac8cb61357`;
+the latest source and CI status are tracked in
+[follow-up PR #65](https://github.com/CPE334-Pockit/Pockit/pull/65). This is
+local verification, not evidence that Pockit is deployed on GCP.
+
+| Command or check | Result |
+| --- | --- |
+| `docker build --platform linux/amd64 -f deploy/Dockerfile.course --build-arg VITE_SERVER_URL=https://s4b043a2c-4d7hbszvwq-as.a.run.app --secret id=web_env,src=apps/web/.env.example --secret id=server_env,src=apps/server/.env.example -t pockit-course-release-check .` | Built successfully. The final image contains the public URL in its runtime environment and client assets; no real secret was used at build time. |
+| `POCKIT_POSTGRES_PORT=15434 docker compose -p pockit-course-check -f docker-compose.db.yml up -d` | Started a new isolated local PostgreSQL container and volume without touching other services. |
+| `docker run --rm --network pockit-course-check_default ... pockit-course-local bun run db:migrate:deploy` | Applied all four checked-in migrations to the isolated database. The omitted argument was a synthetic local-only connection URL. |
+| Run the production-built course image on localhost:3000, then request `/api/health`, `/api/ready`, `/`, and `/login` | Health returned `ok`, readiness returned `db: connected`, web root and login both returned HTTP 200. The first attempt exposed a missing runtime `VITE_SERVER_URL`; the Dockerfile was fixed to carry the build argument into the runner stage. |
+| `DATABASE_URL=<isolated synthetic URL> bun run test` | Web, server, API, and PostgreSQL suites passed when run with local DB network access. The first sandboxed invocation could not reach localhost and failed; the authorized rerun passed. |
+| `bun run check-types`; `bunx biome check deploy/course-entry.ts`; `bash -n deploy/course-first-deploy.sh`; `DRY_RUN=1 bash deploy/course-first-deploy.sh` | Passed. The dry run listed only updates to this team's existing job and service. |
+| `bun run check` | Repository-wide Biome check still reports existing errors and warnings in unrelated files; the new entrypoint passes targeted Biome validation. CI will determine the PR gate result. |
+
+The verification containers were stopped, leaving the isolated PostgreSQL
+volume intact. None of these commands accessed the university database.
 
 ## 3. Environment variables
 
@@ -81,6 +117,7 @@ GCP runtime secret/configuration mechanism.
 | `DATABASE_URL` | Server/database | Yes | PostgreSQL connection string. |
 | `POCKIT_DEMO_PASSWORD` | Server seed | Yes | Optional synthetic local demo password; never commit a real value. |
 | `VITE_SERVER_URL` | Web | No | Public server URL used by the web client. |
+| `SERVER_URL` | Web SSR | No | Internal API listener in the single-service course image. |
 
 ## 4. Local Docker workflow
 
@@ -220,9 +257,12 @@ final evidence index.
 
 GitHub Actions must authenticate to GCP with Workload Identity Federation or an
 equivalent keyless mechanism. Do not download, commit, or place a service-account
-JSON key in GitHub Actions secrets. The deployment environment must be restricted
-to the `main` branch and must contain only the project, region, provider, and
-deployer-service-account identifiers; runtime secrets remain in Secret Manager.
+JSON key in GitHub Actions secrets. The course portal did not connect this
+repository because its existing deployment layout differs from the Starter Kit.
+The team will ask the TA to connect `CPE334-Pockit/Pockit` to prefix
+`s4b043a2c` and provide the non-secret `WIF_PROVIDER` and
+`WIF_SERVICE_ACCOUNT` identifiers. The `production` environment must be
+restricted to `main`. Runtime secrets remain in Secret Manager.
 
 Configure the `main` branch ruleset with:
 
@@ -247,17 +287,18 @@ test at `apps/server/src/merge-gate-demo.test.ts:4` failed in
 The PR UI showed the check as `Required`, `Merging is blocked`, and a disabled
 merge button. The PR was closed without merging; `main` remained at
 `211bb77fb2a5ccb95027d9d110e0132ff1001918`. This proves the merge gate,
-not GitHub-to-GCP authentication, which still awaits project access.
+not GitHub-to-GCP authentication, which still awaits the TA's repository
+connection.
 
 ## 9. Release workflow
 
 `.github/workflows/deploy.yml` runs after the `CI and Docker` workflow succeeds on
-the exact `main` commit, or by manual dispatch. It authenticates with Workload
-Identity Federation, builds API and web images tagged with the full commit SHA,
-pushes them to Artifact Registry, creates or updates the migration job with its
-explicit command and database configuration, deploys both public Cloud Run
-services with explicit container ports, aligns the API trusted origin with the
-web URL, and runs public health/readiness smoke checks.
+the exact `main` commit, or by manual dispatch. Once the TA enables WIF, it
+authenticates without a key, builds the single course image tagged with the full
+commit SHA, pushes it to the team's existing Artifact Registry repository,
+updates and executes the existing migration job, updates the existing Cloud Run
+service, and runs public health/readiness smoke checks. It never creates
+infrastructure or changes project IAM.
 
 ### Repeatable release procedure (AC-L5-07-06)
 
@@ -271,22 +312,31 @@ web URL, and runs public health/readiness smoke checks.
    If a manual workflow dispatch is used, confirm its selected ref and SHA
    correspond to the reviewed release and that CI passed for that same SHA.
 4. Inspect the deployment run in GitHub Actions. Record its run URL, full image
-   tags, migration job result, both Cloud Run revision names, public web/API
-   URLs, and read-only health/readiness smoke results. Do not report a release
+   tag/digest, migration job result, Cloud Run revision, public web/API paths
+   on the same team URL, and health/readiness smoke results. Do not report a release
    complete if migration or smoke test failed.
 5. Compare the full release commit SHA from `main` with the image tags and the
    image used by each serving Cloud Run revision. Open the public web URL and
    verify the released change through a synthetic user journey. Record the
    result in the evidence index (C-06) and Issue #40.
 
-These steps describe the procedure only. No successful GCP release has been
-recorded while project billing/access remains pending.
+These steps describe the procedure only. Infrastructure is ready, but no Pockit
+image has been deployed or release run recorded. For a reviewed first release
+that needs manual deployment before WIF is connected, run
+`DRY_RUN=1 bash deploy/course-first-deploy.sh` and inspect its commands; after
+the reviewed commit reaches a clean local `main`, run
+`DRY_RUN=0 bash deploy/course-first-deploy.sh`. The script validates the
+course project and existing team resources, builds an amd64 image, stops if
+migrations fail, and updates only the team's existing service. This manual
+first deployment does not satisfy the GitHub Actions release criterion.
 
-Required `production` environment variables are `GCP_PROJECT_ID`, `GCP_REGION`,
-`WIF_PROVIDER`, and `WIF_SERVICE_ACCOUNT`. The pre-provisioned runtime service
-account must be `pockit-runner@PROJECT_ID.iam.gserviceaccount.com`, and it needs
-Cloud SQL access plus access to the `pockit-database-url` and
-`pockit-auth-secret` secrets. Runtime database and authentication secrets remain
-in Secret Manager. Record the workflow URL, image tags, Cloud Run revisions,
-smoke-test result, and serving commit for Issue #40.
+The workflow uses the portal-assigned project, region, prefix, and URL. The
+`production` environment needs the non-secret `WIF_PROVIDER` and
+`WIF_SERVICE_ACCOUNT` variables once the TA connects GitHub. The latter must
+equal `s4b043a2c-deployer@cpe-se-course-2026.iam.gserviceaccount.com`.
+The existing runtime identity is `s4b043a2c-runner@cpe-se-course-2026.iam.gserviceaccount.com`;
+the portal already mapped `DATABASE_URL` and attached Cloud SQL to the service
+and job. The deploy adds `BETTER_AUTH_SECRET` from app secret slot 1 without
+replacing the database mapping. Record the workflow URL, image tag/digest,
+serving revision, smoke-test result, and release commit for Issue #40.
 
