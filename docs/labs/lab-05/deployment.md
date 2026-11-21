@@ -16,7 +16,7 @@ connection strings, API keys, service-account keys, or other secrets here.
 | GCP project ID | `cpe-se-course-2026` (shared course project) |
 | GCP region | `asia-southeast1` |
 | Team prefix | `s4b043a2c` assigned by the course portal |
-| Public service URL | `https://s4b043a2c-4d7hbszvwq-as.a.run.app` (Pockit revision `s4b043a2c-00002-82b` serves 100% of traffic) |
+| Public service URL | `https://s4b043a2c-4d7hbszvwq-as.a.run.app` (initial Pockit revision `s4b043a2c-00002-82b`; current `s4b043a2c-lab5redeploy` serves 100% of traffic) |
 
 ## 2.1 GCP deployment plan
 
@@ -466,7 +466,7 @@ worktree at the release commit ran:
 | Registry manifest-list digest | `sha256:5e206e635ecab27b398360265c4f0cdf955ca746ab612270ba6b5d0f77790e3b` from Docker push |
 | Migration | Execution `s4b043a2c-migrate-2vpgq`, `Completed=True` at `2026-11-20T14:59:52Z` |
 | Course User bootstrap | Execution `s4b043a2c-migrate-7gfpq`, `Completed=True` at `2026-11-20T15:00:18Z`; the job references secret `s4b043a2c-app-secret-2:latest` without exposing its value |
-| Cloud Run | Service `s4b043a2c` revision `s4b043a2c-00002-82b` Ready and serving 100% at `https://s4b043a2c-4d7hbszvwq-as.a.run.app` |
+| Cloud Run | Initial service `s4b043a2c` revision `s4b043a2c-00002-82b` was Ready and served 100% at `https://s4b043a2c-4d7hbszvwq-as.a.run.app` after first deployment; current `s4b043a2c-lab5redeploy` serves 100% with the same release image. |
 | Serving image | Revision digest `sha256:015061e172242f39cc28fba2a59618076ea2fb685b509cf98835700eac391eee` (selected platform manifest); service config retains full release SHA image tag |
 | Public paths | `GET /`, `/login`, `/api/health`, and `/api/ready` each returned HTTP 200. Readiness body: `{"status":"ready","db":"connected"}`. The browser home page identified Pockit. |
 | Access restriction | Unauthenticated `GET /trpc/finance.accounts.list` returned HTTP 401, `Authentication required`. |

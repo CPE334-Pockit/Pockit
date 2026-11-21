@@ -20,10 +20,17 @@ Topic: 7 — Personal Money and Expense Logging System (Pockit).
   `9ca079f4f4c48f9d85e1a63861c7de7bf3e54469`; this follow-up records
   the completed C-02 demonstration and repository migration.
 - Reviewed release commit: `5256b3cd7b9269dc32db5bd10abfe401bbaeb958` ([PR #70](https://github.com/CPE334-Pockit/Pockit/pull/70)); final submitted tag pending.
-- Public web/API URL: `https://s4b043a2c-4d7hbszvwq-as.a.run.app`; Pockit revision `s4b043a2c-00002-82b` serves the reviewed commit after a manual deployment.
-- [C-01 through C-06 evidence index](evidence-index.md). C-01 and C-02 are
-  verified; C-03 has integrated local Docker evidence. C-04 through C-06 remain
-  incomplete until GitHub Actions release and persistence checks run.
+- Public web/API URL: `https://s4b043a2c-4d7hbszvwq-as.a.run.app`; initial
+  manual Pockit revision `s4b043a2c-00002-82b` served the reviewed commit.
+  Current revision `s4b043a2c-lab5redeploy` serves the same image at 100% traffic.
+- [C-01 through C-06 evidence index](evidence-index.md): C-01 and C-02 are
+  verified; C-03 has integrated local Docker evidence; C-04 is verified by the
+  public finance workflow and access restriction; C-05 is supported by cloud
+  revision/readiness commands and the team's before/after observations, with
+  one distinct before image and one post-redeployment image. There is no
+  independent screenshot between the rollouts. C-06 has reviewed release,
+  manual deployment and live smoke evidence, but still needs a successful
+  GitHub Actions deployment.
 
 ## Answer Part 1: CI and Quality Gate
 
@@ -63,8 +70,9 @@ The university portal prepared team PEEEEEEJA's resources on 2026-11-19 in
 the reserved public URL above. The [portal completion](artifacts/course-ready-2026-11-19.png)
 and [resource record](artifacts/course-resources-2026-11-19.png) are setup
 evidence. Pockit replaced the placeholder by a manual deployment of reviewed
-commit `5256b3c`: migration and course User bootstrap completed, and revision
-`s4b043a2c-00002-82b` serves 100% of traffic. The public root, login, health
+commit `5256b3c`: migration and course User bootstrap completed, and initial
+revision `s4b043a2c-00002-82b` served 100% of traffic. Current revision
+`s4b043a2c-lab5redeploy` serves the same image at 100%. The public root, login, health
 and readiness paths returned HTTP 200; an unauthenticated finance read returned
 HTTP 401. A team-provided screenshot shows successful public sign-in to the
 dashboard and the `LAB5-PERSIST-20261120` Salary receipt for THB 123.45;
@@ -83,9 +91,11 @@ The team confirmed it has no separate after-restart screenshot. Retain one as
 the post-redeployment image; do not present them as two independent images.
 The original browser chrome includes unrelated personal tabs and bookmarks,
 so place a privacy-safe view in the PDF.
-The local Compose restart retained three synthetic Users, but this does not
-prove C-04 or C-05 on GCP. Add direct URLs and numbered, readable screenshots
-with the public URL and serving commit when the cloud workflow is tested.
+The local Compose restart retained three synthetic Users as supporting local
+evidence. For the final PDF, pair the distinct before and post-redeployment
+dashboard images and label the first cloud restart as team-reported, supported
+by the named revision and readiness command results. Do not imply that the
+byte-identical after-stage files are two separate screenshots.
 
 ## Answer Part 4: Repeatable Release Pipeline
 
