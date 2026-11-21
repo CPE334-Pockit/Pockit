@@ -68,7 +68,7 @@ team PEEEEEEJA. The portal completed all six provisioning steps. A read-only
 returned `RUNNABLE` in `asia-southeast1`; read-only describes confirmed the
 existing service and migration job. At setup time the service ran the portal
 placeholder image; the first Pockit deployment is recorded below. [Issue #35](https://github.com/CPE334-Pockit/Pockit/issues/35) tracks
-team access and the centrally managed budget question. The
+team access and the course-managed cost-control decision. The
 [portal completion screenshot](artifacts/course-ready-2026-11-19.png) shows all
 six steps complete; the [resource screenshot](artifacts/course-resources-2026-11-19.png)
 shows the assigned project, region, prefix, and reserved URL without credentials.
@@ -77,9 +77,18 @@ shows the assigned project, region, prefix, and reserved URL without credentials
 | --- | --- |
 | Approved account used | Portal verified the registered Google account; no account identifier or credential recorded here. |
 | Billing or Free Trial active | Shared university project provisioned resources successfully; personal Free Trial is no longer the deployment path. |
-| Teammate added to project | Not yet independently verified; TA must add team members through the portal. |
-| Alerts-only budget created | Not verified; course credits are shared and the team cannot manage project-wide billing. Ask TA whether the course manages alerts centrally. |
+| Teammate access | Both students reported on 2026-11-21 that they can access the team resources in the intended GCP project; this is a team report, not an agent-observed second-account session. |
+| Budget alert | No team-created alert. The original personal Free Trial handout strongly recommended one, but the later course portal supplies a shared project and shared credits without a student budget setup step. The team does not claim that a central alert exists. |
 | Region and quota checked | Portal assigned `asia-southeast1` and Cloud SQL `db-f1-micro`; team-specific quotas were not independently verified. |
+
+Under the university's shared-project instructions, the team uses its one
+portal-provisioned Cloud SQL instance and existing team resources. The serving
+Cloud Run service is configured with minimum instances 0 and maximum instances
+1. The team must not create another SQL instance or modify billing for the
+shared project. The original alerts-only budget recommendation applied to a
+student-owned Free Trial project; it is not recorded as a configured control
+for this course-managed project. Course administrators can confirm whether
+they operate central billing alerts if needed.
 
 ### Course-image local verification (2026-11-19)
 
