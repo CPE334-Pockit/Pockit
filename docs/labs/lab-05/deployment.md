@@ -360,9 +360,10 @@ Changing secret slot 2 later does not rotate the existing account password.
 If the bootstrap job fails, the service update does not run. The local
 `db:seed` production safeguard remains in place.
 
-`.github/workflows/deploy.yml` runs after the `CI and Docker` workflow succeeds on
-the exact `main` commit, or by manual dispatch after checking a successful CI
-run for that same SHA. Once the portal GitHub connection is completed, it
+`.github/workflows/deploy.yml` starts on a push to `main` or by manual dispatch
+from `main`. Before authenticating to GCP, it waits for the `CI and Docker`
+push run on the exact release SHA to pass; a failed or missing CI result stops
+the deployment. Once the portal GitHub connection is completed, it
 authenticates without a key, builds the single course image tagged with the full
 commit SHA, pushes it to the team's existing Artifact Registry repository,
 updates and executes the existing migration job, runs the course User bootstrap,
@@ -378,9 +379,10 @@ infrastructure or changes project IAM.
    the release diff and the required CI result. Merge only after that review
    and all required checks pass. Record the release PR and merge commit SHA.
 3. Confirm `CI and Docker` passed on that exact `main` SHA. The `push: main`
-   trigger produces this run; its successful `workflow_run` triggers `deploy.yml`.
-   If a manual workflow dispatch is used, confirm its selected ref and SHA
-   correspond to the reviewed release and that CI passed for that same SHA.
+   trigger starts both CI and `deploy.yml`; the deployment waits for passing CI
+   before authenticating or changing GCP. If a manual workflow dispatch is used,
+   confirm its selected ref and SHA correspond to the reviewed release and that
+   CI passed for that same SHA.
 4. Inspect the deployment run in GitHub Actions. Record its run URL, full image
    tag/digest, migration job result, Cloud Run revision, public web/API paths
    on the same team URL, and health/readiness smoke results. Do not report a release
@@ -411,8 +413,10 @@ course project and existing team resources, builds an amd64 image, stops if
 migrations fail, and updates only the team's existing service. This manual
 first deployment does not satisfy the GitHub Actions release criterion.
 
-The workflow uses the portal-assigned project, region, prefix, and URL. It was
-compared with the downloaded portal workflow and retains the Pockit-specific
+The workflow uses the portal-assigned project, region, prefix, and URL. The
+project and region come from the `demo` environment variables and are checked
+against the assigned team values before authentication. It was compared with
+the downloaded portal workflow and retains the Pockit-specific
 exact-SHA CI gate, migrations before traffic, one-time identity bootstrap, and
 public smoke checks. Its GitHub environment is `demo`, restricted to `main`,
 with `GCP_PROJECT_ID`, `GCP_REGION`, `WIF_PROVIDER`, `WIF_SERVICE_ACCOUNT`, and
@@ -456,7 +460,11 @@ Cloud Run update ran. The downloaded newer team workflow differs from
 Pockit's workflow in trigger (`push` versus `workflow_run`) and Google auth
 action version (v3 versus v2); neither difference is established as the cause.
 Send the attempt-3 job log to the TA and ask them to compare the provider
-condition with this run's OIDC claims before changing the reviewed workflow.
+condition with this run's OIDC claims. A reviewed follow-up on PR #71 now
+proposes the portal's `push: main` trigger and pinned v3 auth/setup actions as
+a diagnostic while retaining the exact-SHA CI gate and Pockit release steps.
+The earlier failures remain historical evidence; this change does not prove
+WIF works until a new run on `main` authenticates successfully.
 
 To verify the application while WIF is blocked, an isolated clean `main`
 worktree at the release commit ran:
