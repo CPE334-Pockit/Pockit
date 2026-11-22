@@ -113,3 +113,7 @@ targeted `biome check` passed. Repository-wide `bun run check` still fails on
 unrelated pre-existing formatting in `.claude/skills/shadcn` and `packages/ui`;
 the three changed TypeScript files pass the targeted check. Cloud results
 will be added after the reviewed release and private secret setup.
+
+The PR also adds `lab6` to the `ci-docker.yml` pull-request branch filter so
+the existing `test-and-docker` gate runs on Lab 6 implementation PRs before
+they reach the separately reviewed `main` release PR.
