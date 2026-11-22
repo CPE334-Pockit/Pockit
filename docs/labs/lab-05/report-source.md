@@ -1,9 +1,8 @@
 # Lab 5 submission source — Section 1, PEEEEEEJA
 
-Use this source to prepare `lab5_sec1_PEEEEEEJA.pdf` once all checks have
-evidence. It is intentionally incomplete; do not submit it as a final PDF.
-Every link and result must be rechecked against the release commit before
-export. Use synthetic data and remove secret values from any screenshots.
+Use this source to prepare `lab5_sec1_PEEEEEEJA.pdf`. The C-01 through C-06
+evidence is available. Check the final PDF layout and links before submission;
+use synthetic data and exclude browser chrome and secrets from screenshots.
 
 ## Answer Part 0: Team and Evidence Index
 
@@ -12,25 +11,25 @@ Topic: 7 — Personal Money and Expense Logging System (Pockit).
 | Student | ID | GitHub | Evidence of participation |
 | --- | --- | --- | --- |
 | Polwarit Watthanahemmarat | 67070501067 | [MadMax168](https://github.com/MadMax168) | [PR #57](https://github.com/CPE334-Pockit/Pockit/pull/57), local Docker and browser verification; [Issue #36](https://github.com/CPE334-Pockit/Pockit/issues/36). |
-| Guntee Doungmanee | 67070501003 | [ovenmakemeheat](https://github.com/ovenmakemeheat) | Teammate reviews in [PR #44](https://github.com/CPE334-Pockit/Pockit/pull/44) and [PR #48](https://github.com/CPE334-Pockit/Pockit/pull/48). Add deployment and release contributions after execution. |
+| Guntee Doungmanee | 67070501003 | [ovenmakemeheat](https://github.com/ovenmakemeheat) | Teammate reviews in [PR #44](https://github.com/CPE334-Pockit/Pockit/pull/44), [PR #48](https://github.com/CPE334-Pockit/Pockit/pull/48), and approval of [PR #71](https://github.com/CPE334-Pockit/Pockit/pull/71). |
 
 - [Public repository](https://github.com/CPE334-Pockit/Pockit).
 - [PR #58](https://github.com/CPE334-Pockit/Pockit/pull/58) merged the
   preparatory evidence index and report source into `lab5` at
   `9ca079f4f4c48f9d85e1a63861c7de7bf3e54469`; this follow-up records
   the completed C-02 demonstration and repository migration.
-- Reviewed release commit: `5256b3cd7b9269dc32db5bd10abfe401bbaeb958` ([PR #70](https://github.com/CPE334-Pockit/Pockit/pull/70)); final submitted tag pending.
+- Current reviewed release commit: `b315c99b7e68ec4061bd131aff016bb19ed6c899` ([PR #72](https://github.com/CPE334-Pockit/Pockit/pull/72)).
 - Public web/API URL: `https://s4b043a2c-4d7hbszvwq-as.a.run.app`; initial
   manual Pockit revision `s4b043a2c-00002-82b` served the reviewed commit.
-  Current revision `s4b043a2c-lab5redeploy` serves the same image at 100% traffic.
+  Current pipeline revision `s4b043a2c-00005-qd5` serves the new release image at 100% traffic.
 - [C-01 through C-06 evidence index](evidence-index.md): C-01 and C-02 are
   verified; C-03 has integrated local Docker evidence; C-04 is verified by the
   public finance workflow and access restriction; C-05 is supported by cloud
   revision/readiness commands and the team's before/after observations, with
   one distinct before image and one post-redeployment image. There is no
-  independent screenshot between the rollouts. C-06 has reviewed release,
-  manual deployment and live smoke evidence, but still needs a successful
-  GitHub Actions deployment.
+  independent screenshot between the first two rollouts. A separate screenshot
+  after the GitHub Actions release shows the same record. C-06 is verified by
+  reviewed PR #72, passing main CI and successful deploy run 44995350059.
 
 ## Answer Part 1: CI and Quality Gate
 
@@ -97,10 +96,24 @@ dashboard images and label the first cloud restart as team-reported, supported
 by the named revision and readiness command results. Do not imply that the
 byte-identical after-stage files are two separate screenshots.
 
+On 2026-11-22, a separate reviewed release reached `main` at
+`b315c99b7e68ec4061bd131aff016bb19ed6c899`. [Main CI 44995349976](https://github.com/CPE334-Pockit/Pockit/actions/runs/44995349976)
+passed and [GitHub Actions deploy 44995350059](https://github.com/CPE334-Pockit/Pockit/actions/runs/44995350059)
+completed keyless authentication, migration, bootstrap, Cloud Run update and
+public smoke. Revision `s4b043a2c-00005-qd5` is Ready and serves 100% of
+traffic with an image tag containing that full SHA. `/api/health` returned
+`ok`, `/api/ready` returned `ready` with `db: connected`, and `/` succeeded.
+The team supplied a new public dashboard screenshot after this pipeline
+deploy, showing the same `LAB5-PERSIST-20261120` transaction and THB 123.45
+Cash/Income totals. The raw image is Git-ignored at
+`artifacts/private/public-income-after-actions-2026-11-22.png` because its
+browser chrome includes bookmarks and account details; frame only the URL
+and application content in the PDF.
+
 ## Answer Part 4: Repeatable Release Pipeline
 
-- [Deployment workflow](https://github.com/CPE334-Pockit/Pockit/blob/lab5/.github/workflows/deploy.yml)
-  is present on `lab5`. [PR #56](https://github.com/CPE334-Pockit/Pockit/pull/56)
+- [Deployment workflow](https://github.com/CPE334-Pockit/Pockit/blob/main/.github/workflows/deploy.yml)
+  is on `main`. [PR #56](https://github.com/CPE334-Pockit/Pockit/pull/56)
   documents the release sequence; it was reviewed and merged into `lab5` at
   `30ac9e8a50a28460193a07a3e743179c5965ac6f`.
 - [Release PR #70](https://github.com/CPE334-Pockit/Pockit/pull/70) merged
@@ -109,5 +122,14 @@ byte-identical after-stage files are two separate screenshots.
   and [manual dispatch](https://github.com/CPE334-Pockit/Pockit/actions/runs/44757614254)
   both failed at the course WIF provider's attribute condition before updating
   GCP. A separate manual deployment of the same image succeeded and its Cloud
-  Run revision/digest are recorded in [deployment.md](deployment.md). C-06
-  still needs a successful GitHub Actions deployment and live workflow evidence.
+  Run revision/digest are recorded in [deployment.md](deployment.md). These
+  earlier failures are retained as diagnostic history.
+- [Implementation PR #71](https://github.com/CPE334-Pockit/Pockit/pull/71)
+  merged the portal-aligned workflow into `lab5` after teammate approval.
+  [Release PR #72](https://github.com/CPE334-Pockit/Pockit/pull/72) merged it
+  into `main` at `b315c99b7e68ec4061bd131aff016bb19ed6c899` after a separate
+  review. [Main CI 44995349976](https://github.com/CPE334-Pockit/Pockit/actions/runs/44995349976)
+  and [deploy run 44995350059](https://github.com/CPE334-Pockit/Pockit/actions/runs/44995350059)
+  passed. Read-only service describe confirmed revision `s4b043a2c-00005-qd5`
+  Ready at 100% traffic, image tagged with the full release SHA. Public
+  health/readiness/web smoke passed; this verifies C-06.

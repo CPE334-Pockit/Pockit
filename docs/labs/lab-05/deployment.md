@@ -16,7 +16,7 @@ connection strings, API keys, service-account keys, or other secrets here.
 | GCP project ID | `cpe-se-course-2026` (shared course project) |
 | GCP region | `asia-southeast1` |
 | Team prefix | `s4b043a2c` assigned by the course portal |
-| Public service URL | `https://s4b043a2c-4d7hbszvwq-as.a.run.app` (initial Pockit revision `s4b043a2c-00002-82b`; current `s4b043a2c-lab5redeploy` serves 100% of traffic) |
+| Public service URL | `https://s4b043a2c-4d7hbszvwq-as.a.run.app` (initial Pockit revision `s4b043a2c-00002-82b`; current pipeline revision `s4b043a2c-00005-qd5` serves 100% of traffic) |
 
 ## 2.1 GCP deployment plan
 
@@ -446,9 +446,8 @@ and [manual dispatch run 44757614254](https://github.com/CPE334-Pockit/Pockit/ac
 both passed exact-SHA/variable checks but failed at keyless authentication:
 `unauthorized_client: The given credential is rejected by the attribute
 condition`. The team account cannot read the course provider condition
-(`iam.workloadIdentityPoolProviders.get` denied). No GitHub Actions deployment
-has succeeded; the TA must inspect the provider's binding for this repo,
-`main`, `.github/workflows/deploy.yml`, and `demo`.
+(`iam.workloadIdentityPoolProviders.get` denied). These are historical failed
+attempts; the subsequent pipeline release is recorded below.
 
 On 2026-11-21 ICT, the failed manual run was retried as
 [attempt 3](https://github.com/CPE334-Pockit/Pockit/actions/runs/44757614254/attempts/3)
@@ -547,6 +546,34 @@ The first before-rollout screenshot file was saved at about 22:34 ICT; the
 byte-identical after-stage files were received at 22:45 ICT, after the second
 revision existed. These file times are consistent with the team's account
 but do not replace an independent screenshot from between the rollouts.
-This manual redeployment does not substitute for the still-failing GitHub
-Actions workflow in #39/#40.
+This manual redeployment was later followed by a successful GitHub Actions
+release, documented below.
+
+### First successful GitHub Actions release (2026-11-22)
+
+[Implementation PR #71](https://github.com/CPE334-Pockit/Pockit/pull/71)
+merged the portal-aligned `push: main` workflow into `lab5` after teammate
+review. The separately reviewed [release PR #72](https://github.com/CPE334-Pockit/Pockit/pull/72)
+merged `lab5` into `main` at
+`b315c99b7e68ec4061bd131aff016bb19ed6c899`.
+[Main CI run 44995349976](https://github.com/CPE334-Pockit/Pockit/actions/runs/44995349976)
+passed on that exact SHA. [Deploy run 44995350059](https://github.com/CPE334-Pockit/Pockit/actions/runs/44995350059)
+then completed every step successfully: exact-SHA CI gate, keyless WIF
+authentication, image build/push, checked-in database migrations, idempotent
+course User bootstrap, existing team service update and public smoke checks.
+The workflow did not create additional infrastructure or use a committed
+service-account key.
+
+| Result | Observed evidence |
+| --- | --- |
+| Release image | `asia-southeast1-docker.pkg.dev/cpe-se-course-2026/s4b043a2c/s4b043a2c:b315c99b7e68ec4061bd131aff016bb19ed6c899` in the deploy run log and service configuration |
+| Pipeline revision | `s4b043a2c-00005-qd5` Ready and serving 100% of traffic, confirmed by the run log and read-only `gcloud run services describe s4b043a2c --project=cpe-se-course-2026 --region=asia-southeast1 --format=json` |
+| Public smoke | Workflow `GET /api/health` returned `{"status":"ok"}`, `GET /api/ready` returned `{"status":"ready","db":"connected"}`, and `GET /` succeeded |
+| Persistent record | After this pipeline deployment, a team member refreshed the public dashboard and supplied a screenshot showing the same `LAB5-PERSIST-20261120` transaction and THB 123.45 Cash/Income totals at the public `/dashboard` URL. The raw file is kept in Git-ignored `artifacts/private/public-income-after-actions-2026-11-22.png`; only a privacy-safe crop belongs in the PDF. |
+
+The previous WIF attribute-condition failures remain in the run history as
+diagnostic evidence. Their cause was not independently isolated: the successful
+run followed the workflow trigger/action update, and no course-provider
+condition was inspected. Issue #39 verifies keyless authentication; Issue #40
+verifies the completed pipeline release. Issue #41 tracks the final report.
 
