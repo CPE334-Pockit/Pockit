@@ -15,7 +15,7 @@
 | UAT URL | [Dashboard](https://s4b043a2c-4d7hbszvwq-as.a.run.app/dashboard) |
 | Accepted-for-test scope | Implemented Sprint 1 only: login/logout; opening Cash balance; salary receipt; split credit-card purchase; repayment; balances, income/expense totals, categories and history; User ownership and Administrator finance denial. See the [Sprint 1 feature contract](../../features/sprint1-feature-contracts.md) and [test specification](../../testing/sprint1-software-test-specification.md). |
 | Product Team | Pockit: Polwarit Watthanahemmarat (67070501067) and Guntee Doungmanee (67070501003). |
-| UAT Team | Palapluem, represented by [pocket-ledger](https://github.com/Palapluem/pocket-ledger), is confirmed as Pockit's tester. Individual tester names are **TBD**. |
+| UAT Team | Palapluem: Natthawat Primsirikunawut (67070501027, [@N0TAW00D](https://github.com/N0TAW00D)) and Wisit Suwannao (67070501042, [@Palapluem](https://github.com/Palapluem)). Team repository: [pocket-ledger](https://github.com/Palapluem/pocket-ledger). |
 
 The deployed commit is newer than the Sprint 1 tag because it includes Lab 5 deployment work. The Lab 5 deployment record identifies no change to the accepted Sprint 1 product scope. UAT results apply only to the deployed commit and revision in the table above, and only to Sprint 1 behavior.
 
