@@ -148,8 +148,7 @@ def main():
     add(p("Public " + link("repository", "https://github.com/CPE334-Pockit/Pockit") +
           " | " + link("service", "https://s4b043a2c-4d7hbszvwq-as.a.run.app") +
           " | " + link("release PR #72", "https://github.com/CPE334-Pockit/Pockit/pull/72") +
-          " | " + link("evidence index", "https://github.com/CPE334-Pockit/Pockit/blob/main/docs/labs/lab-05/evidence-index.md") +
-          " (repository index will reflect this update after its issue PR merges)."))
+          " | " + link("evidence index", "https://github.com/CPE334-Pockit/Pockit/blob/lab5/docs/labs/lab-05/evidence-index.md") + "."))
     add(p("Running commit: <b>b315c99b7e68ec4061bd131aff016bb19ed6c899</b>. Cloud Run revision: <b>s4b043a2c-00005-qd5</b>, Ready, 100% traffic, verified by the pipeline run and read-only service describe."))
     add(p("Check", "SubLab"))
     add(table([
@@ -157,7 +156,7 @@ def main():
         row("C-01 / Part 1", link("PR #50", "https://github.com/CPE334-Pockit/Pockit/pull/50") + ", " + link("CI 44025791559", "https://github.com/CPE334-Pockit/Pockit/actions/runs/44025791559"), "Build and tests passed; head 3057e867."),
         row("C-02 / Part 1", link("PR #63", "https://github.com/CPE334-Pockit/Pockit/pull/63") + ", " + link("failed CI", "https://github.com/CPE334-Pockit/Pockit/actions/runs/44135270043"), "Required check blocked merge; head 19874207."),
         row("C-03 / Part 2", link("PR #57", "https://github.com/CPE334-Pockit/Pockit/pull/57"), "Clean build, migrations, synthetic seed and running UI/API; 3c7a7e9 + fix 42f67d6."),
-        row("C-04 / Part 3", link("service", "https://s4b043a2c-4d7hbszvwq-as.a.run.app") + ", " + link("deployment record", "https://github.com/CPE334-Pockit/Pockit/blob/main/docs/labs/lab-05/deployment.md"), "Public sign-in, synthetic receipt, connected DB; unauthorized finance read 401; 5256b3c."),
+        row("C-04 / Part 3", link("service", "https://s4b043a2c-4d7hbszvwq-as.a.run.app") + ", " + link("deployment record", "https://github.com/CPE334-Pockit/Pockit/blob/lab5/docs/labs/lab-05/deployment.md"), "Public sign-in, synthetic receipt, connected DB; unauthorized finance read 401; 5256b3c."),
         row("C-05 / Part 3", link("deploy run 44995350059", "https://github.com/CPE334-Pockit/Pockit/actions/runs/44995350059") + ", Figures 1-3", "Same receipt after restart, manual and pipeline redeploy; 5256b3c / b315c99."),
         row("C-06 / Part 4", link("PR #71", "https://github.com/CPE334-Pockit/Pockit/pull/71") + ", " + link("PR #72", "https://github.com/CPE334-Pockit/Pockit/pull/72") + ", " + link("deploy run", "https://github.com/CPE334-Pockit/Pockit/actions/runs/44995350059"), "Reviewed release deployed successfully; b315c99 revision 00005-qd5."),
     ], [88, 216, 230]))
@@ -186,7 +185,7 @@ def main():
     add(p("A fresh checkout at 3c7a7e9 first revealed that Prisma Client generation was missing inside the image. " +
           link("PR #57", "https://github.com/CPE334-Pockit/Pockit/pull/57") +
           " includes the 42f67d6 fix and the recorded commands: Docker Compose build/up, versioned migration, synthetic seed, health/readiness and browser checks. The fixed checkout built both images, applied four migrations, seeded three demo Users and ten accounts, and served API/web HTTP 200 (C-03)."))
-    add(p("" + link("Deployment configuration", "https://github.com/CPE334-Pockit/Pockit/blob/main/docs/labs/lab-05/deployment.md") +
+    add(p("" + link("Deployment configuration", "https://github.com/CPE334-Pockit/Pockit/blob/lab5/docs/labs/lab-05/deployment.md") +
           " documents build, test, migration and release commands plus each environment variable's purpose/source and secrecy. The university portal supplied one team Cloud SQL instance, registry, migration job, service and Secret Manager references; the workflow updates only those team resources."))
     add(table([
         row("Setting", "Source", "Handling", header=True),
@@ -224,7 +223,7 @@ def main():
     add(p(link("Deploy run 44995350059", "https://github.com/CPE334-Pockit/Pockit/actions/runs/44995350059") +
           " passed exact-SHA CI wait, keyless WIF auth, image build/push, additive migration, idempotent bootstrap, service update and public smoke. The image tag includes the full release SHA; read-only gcloud service describe confirmed s4b043a2c-00005-qd5 Ready with 100% traffic. Health returned ok, readiness returned ready/db connected and web root succeeded (C-06 / R-08)."))
     add(p("Repeatable procedure: 1) merge a reviewed issue PR into lab5; 2) open and review a separate lab5 to main release PR; 3) merge after required CI; 4) let the main push workflow wait for CI on the same SHA; 5) inspect WIF, migration, service revision, image tag and smoke in the deploy run. " +
-          link("Detailed commands and fallback", "https://github.com/CPE334-Pockit/Pockit/blob/main/docs/labs/lab-05/deployment.md") +
+          link("Detailed commands and fallback", "https://github.com/CPE334-Pockit/Pockit/blob/lab5/docs/labs/lab-05/deployment.md") +
           " are documented in deployment.md."))
     add(p("Earlier WIF attempts " + link("44757283437", "https://github.com/CPE334-Pockit/Pockit/actions/runs/44757283437") +
           " and " + link("44757614254", "https://github.com/CPE334-Pockit/Pockit/actions/runs/44757614254") +
