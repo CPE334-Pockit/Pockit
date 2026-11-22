@@ -12,10 +12,10 @@
 | Sprint 1 baseline | Tag [`sprint1-v1.0.0`](https://github.com/CPE334-Pockit/Pockit/releases/tag/sprint1-v1.0.0), commit `e99da77c8181a97a32abfddc37b116ff297acf27` |
 | Deployed version used for this handoff | `main` commit `b315c99b7e68ec4061bd131aff016bb19ed6c899`; deployment [run 44995350059](https://github.com/CPE334-Pockit/Pockit/actions/runs/44995350059) succeeded |
 | Deployed revision | `s4b043a2c-00005-qd5`, serving 100% of traffic per the [Lab 5 deployment record](../lab-05/deployment.md) |
-| UAT URL | [https://s4b043a2c-4d7hbszvwq-as.a.run.app](https://s4b043a2c-4d7hbszvwq-as.a.run.app) |
+| UAT URL | [Dashboard](https://s4b043a2c-4d7hbszvwq-as.a.run.app/dashboard) |
 | Accepted-for-test scope | Implemented Sprint 1 only: login/logout; opening Cash balance; salary receipt; split credit-card purchase; repayment; balances, income/expense totals, categories and history; User ownership and Administrator finance denial. See the [Sprint 1 feature contract](../../features/sprint1-feature-contracts.md) and [test specification](../../testing/sprint1-software-test-specification.md). |
 | Product Team | Pockit: Polwarit Watthanahemmarat (67070501067) and Guntee Doungmanee (67070501003). |
-| UAT Team | **TBD.** Record partner team and both testers before execution. |
+| UAT Team | Palapluem, represented by [pocket-ledger](https://github.com/Palapluem/pocket-ledger), is confirmed as Pockit's tester. Individual tester names are **TBD**. |
 
 The deployed commit is newer than the Sprint 1 tag because it includes Lab 5 deployment work. The Lab 5 deployment record identifies no change to the accepted Sprint 1 product scope. UAT results apply only to the deployed commit and revision in the table above, and only to Sprint 1 behavior.
 
