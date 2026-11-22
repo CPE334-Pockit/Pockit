@@ -45,6 +45,8 @@ pdfmetrics.registerFontFamily("ArialLab", normal="ArialLab", bold="ArialLabBold"
 
 styles = getSampleStyleSheet()
 styles.add(ParagraphStyle(name="TitleLab", fontName="ArialLabBold", fontSize=21, leading=25, textColor=colors.HexColor("#12353b"), spaceAfter=12))
+styles.add(ParagraphStyle(name="CoverTitleLab", fontName="ArialLabBold", fontSize=32, leading=38, textColor=colors.HexColor("#12353b"), spaceAfter=14))
+styles.add(ParagraphStyle(name="CoverSubLab", fontName="ArialLab", fontSize=14, leading=20, textColor=colors.HexColor("#1b5154"), spaceAfter=14))
 styles.add(ParagraphStyle(name="SectionLab", fontName="ArialLabBold", fontSize=14, leading=18, textColor=colors.HexColor("#12353b"), spaceBefore=10, spaceAfter=9))
 styles.add(ParagraphStyle(name="SubLab", fontName="ArialLabBold", fontSize=10, leading=13, textColor=colors.HexColor("#1b5154"), spaceBefore=9, spaceAfter=5))
 styles.add(ParagraphStyle(name="BodyLab", fontName="ArialLab", fontSize=9.1, leading=13, spaceAfter=7))
@@ -136,6 +138,41 @@ def main():
                             title="Lab 5 - Pockit evidence index", author="PEEEEEEJA")
     story = []
     add = story.append
+    add(Spacer(1, 25 * mm))
+    add(HRFlowable(width="100%", thickness=3, color=colors.HexColor("#27a6a0")))
+    add(Spacer(1, 17 * mm))
+    add(p("Pockit", "CoverTitleLab"))
+    add(p("Lab 5 | Cloud Deployment and CI/CD", "CoverSubLab"))
+    add(p("Evidence report and reproducible release record", "SectionLab"))
+    add(Spacer(1, 13 * mm))
+    add(table([
+        row("Course / section", "CPE 334 Software Engineering / 1", header=True),
+        row("Team / topic", "PEEEEEEJA / 7 — Personal Money and Expense Logging System"),
+        row("Students", "Polwarit Watthanahemmarat (67070501067); Guntee Doungmanee (67070501003)"),
+        row("Reviewed release", "b315c99b7e68ec4061bd131aff016bb19ed6c899"),
+        row("Deployed service", link("s4b043a2c-4d7hbszvwq-as.a.run.app", "https://s4b043a2c-4d7hbszvwq-as.a.run.app")),
+        row("Evidence date", "22 November 2026"),
+    ], [143, 391]))
+    add(Spacer(1, 16 * mm))
+    add(p("This document maps the six Lab 5 checks to tested commits, GitHub runs, cloud revisions and a synthetic transaction. Figures show only application pixels. The first restart observation is labelled separately from screenshot evidence."))
+
+    add(PageBreak())
+    add(p("Contents and reading guide", "TitleLab"))
+    add(p("Answer Part 0: Team and Evidence Index — students, release identity and C-01–C-06 map."))
+    add(p("Answer Part 1: CI and Quality Gate — normal passing PR, deliberately failing PR, required rule and final test totals."))
+    add(p("Answer Part 2: Docker and Reproducible Configuration — clean checkout, corrective build, migration/seed and configuration handling."))
+    add(p("Answer Part 3: GCP Deployment and Persistence — public sign-in, finance action, restart/redeploy comparison and privacy-safe figures."))
+    add(p("Answer Part 4: Repeatable Release Pipeline — reviewed staging-to-main release, exact-SHA gate, WIF, deploy and current revision."))
+    add(Spacer(1, 12))
+    add(p("How to read the evidence", "SubLab"))
+    add(p("A GitHub Actions run records an automated result on a named SHA. A Cloud Run revision and service describe record what served traffic. The dashboard figures show the synthetic record after a user refresh. A team observation without a distinct capture is called out explicitly. The linked Markdown evidence index has the command-level record and follow-up history."))
+    add(p("Primary source links", "SubLab"))
+    add(p(link("Public repository", "https://github.com/CPE334-Pockit/Pockit") + " | " +
+          link("Detailed evidence index", "https://github.com/CPE334-Pockit/Pockit/blob/lab5/docs/labs/lab-05/evidence-index.md") + " | " +
+          link("Deployment record and commands", "https://github.com/CPE334-Pockit/Pockit/blob/lab5/docs/labs/lab-05/deployment.md") + " | " +
+          link("Release PR #72", "https://github.com/CPE334-Pockit/Pockit/pull/72")))
+
+    add(PageBreak())
     add(p("Lab 5 - Cloud Deployment and CI/CD", "TitleLab"))
     add(p("Answer Part 0: Team and Evidence Index", "SectionLab"))
     add(p("Section 1 | Team PEEEEEEJA | Topic 7: Personal Money and Expense Logging System (Pockit)."))
@@ -160,6 +197,9 @@ def main():
         row("C-05 / Part 3", link("deploy run 44995350059", "https://github.com/CPE334-Pockit/Pockit/actions/runs/44995350059") + ", Figures 1-3", "Same receipt after restart, manual and pipeline redeploy; 5256b3c / b315c99."),
         row("C-06 / Part 4", link("PR #71", "https://github.com/CPE334-Pockit/Pockit/pull/71") + ", " + link("PR #72", "https://github.com/CPE334-Pockit/Pockit/pull/72") + ", " + link("deploy run", "https://github.com/CPE334-Pockit/Pockit/actions/runs/44995350059"), "Reviewed release deployed successfully; b315c99 revision 00005-qd5."),
     ], [88, 216, 230]))
+    add(Spacer(1, 10))
+    add(p("Release identity", "SubLab"))
+    add(p("The release trace is PR #72 → main SHA b315c99b7e68ec4061bd131aff016bb19ed6c899 → CI 44995349976 → deploy 44995350059 → Cloud Run revision s4b043a2c-00005-qd5. The revision is Ready, receives 100% traffic, and uses an image tag containing the full SHA. This chain is the basis for C-06 rather than an isolated screenshot."))
 
     add(PageBreak())
     add(p("Answer Part 1: CI and Quality Gate", "SectionLab"))
@@ -175,6 +215,18 @@ def main():
           "; GitHub displayed a required failed check and blocked merge. The PR was closed unmerged; the released app was unchanged (C-02 / R-06)."))
     add(p("The new release also passed " + link("main CI 44995349976", "https://github.com/CPE334-Pockit/Pockit/actions/runs/44995349976") +
           " on exact SHA b315c99b7e68ec4061bd131aff016bb19ed6c899 before its deploy workflow touched GCP."))
+    add(p("Automated test result for the final release", "SubLab"))
+    add(table([
+        row("Suite", "Passed", "Failed", "What it covers", header=True),
+        row("Web", "14", "0", "Client UI and route behavior."),
+        row("Server", "20", "0", "Server endpoints and protected behavior."),
+        row("Shared API", "21", "0", "Finance contracts and validation."),
+        row("PostgreSQL", "2", "0", "Database-backed behavior against migrated PostgreSQL."),
+        row("Total", "57", "0", link("Job logs in main CI 44995349976", "https://github.com/CPE334-Pockit/Pockit/actions/runs/44995349976")),
+    ], [94, 53, 53, 334]))
+    add(Spacer(1, 9))
+    add(p("Merge-gate demonstration", "SubLab"))
+    add(p("The intentionally failing test lived only on temporary PR #63. The check was required by the active main ruleset, so GitHub showed the failure and disabled merge. The PR was closed without merging; main stayed at 211bb77fb2a5ccb95027d9d110e0132ff1001918 during the demonstration. This establishes that the check blocks a bad change, while PR #50 establishes the normal passing path."))
 
     add(PageBreak())
     add(p("Answer Part 2: Docker and Reproducible Configuration", "SectionLab"))
@@ -195,6 +247,18 @@ def main():
         row("BETTER_AUTH_SECRET", "Team Secret Manager slot 1", "Runtime secret reference; value not displayed."),
         row("Course User password", "Team Secret Manager slot 2", "Bootstrap reads secret reference; value omitted."),
     ], [128, 202, 204]))
+    add(Spacer(1, 8))
+    add(p("Clean-checkout verification sequence", "SubLab"))
+    add(table([
+        row("Step / command", "Recorded outcome", header=True),
+        row("docker compose -p pockit-lab5-clean build --quiet", "First attempt exposed missing generated Prisma Client; after Dockerfile fix 42f67d6, server and web images built."),
+        row("Isolated PostgreSQL + bun run db:migrate:deploy", "Four checked-in migrations applied to a disposable database."),
+        row("Synthetic bun run db:seed", "Three demo Users and ten financial accounts created; no real financial data."),
+        row("/api/ready and web request", "Database reported connected and web returned HTTP 200."),
+        row("Local restart of server and web", "Synthetic User count remained three; readiness stayed connected."),
+    ], [245, 289]))
+    add(p("The generated-client failure and fix are both in " + link("PR #57", "https://github.com/CPE334-Pockit/Pockit/pull/57") +
+          ". The checkout started from 3c7a7e9fba6fec20c50a2e504d7e71fbe720c061; the corrected Dockerfile is 42f67d6827000d6ab144f549171be0daf6517219. Local restart supports persistence but is separate from the cloud proof in Part 3."))
 
     add(PageBreak())
     add(p("Answer Part 3: GCP Deployment and Persistence", "SectionLab"))
@@ -204,6 +268,17 @@ def main():
     add(p("The address shown in the original browser screenshot is " +
           link("https://s4b043a2c-4d7hbszvwq-as.a.run.app/dashboard", "https://s4b043a2c-4d7hbszvwq-as.a.run.app/dashboard") +
           ". Figures below use exact pixel crops of Cash on hand and Recent activity; browser chrome and personal bookmarks are excluded."))
+    add(table([
+        row("Stage", "Cloud / user observation", "Proof type", header=True),
+        row("Before restart", "Reviewed manual release 5256b3c; record created and visible at public /dashboard.", "Distinct team screenshot; Figure 1."),
+        row("Fresh revision lab5restart", "Ready, 100% traffic, db: connected; team refreshed and saw the same record.", "Revision/readiness plus user observation; no separate image."),
+        row("Manual redeploy lab5redeploy", "Ready, 100% traffic, db: connected; same record and balance remained.", "One post-stage screenshot; Figure 2."),
+        row("Actions revision 00005-qd5", "New SHA-tagged release Ready/100%; same record remained after refresh.", "Distinct post-actions screenshot; Figure 3."),
+    ], [123, 284, 127]))
+    add(p("The two files supplied for the first two after-stage observations were byte-identical. Only one is counted as a post-manual-redeploy capture; the first restart remains a team-observed result. This avoids claiming independent image evidence that does not exist.", "SmallLab"))
+    add(PageBreak())
+    add(p("Part 3 figures: persistence across releases", "SectionLab"))
+    add(p("Each figure pairs the Cash on hand card with the transaction activity from the same screenshot. The marker, amount and account totals can be compared across stages; capture timing is recorded in the surrounding evidence and deployment run."))
     add(Spacer(1, 5))
     add(KeepTogether(screenshot_pair(PRIVATE / "public-income-before-restart-2026-11-20.png", new_layout=False,
                                      figure=1, stage="before the first restart", sha="5256b3c")))
@@ -228,6 +303,15 @@ def main():
     add(p("Earlier WIF attempts " + link("44757283437", "https://github.com/CPE334-Pockit/Pockit/actions/runs/44757283437") +
           " and " + link("44757614254", "https://github.com/CPE334-Pockit/Pockit/actions/runs/44757614254") +
           " failed at the course provider's attribute condition. They remain in the history. The later reviewed release succeeded; the exact cause of the earlier rejection was not independently isolated."))
+    add(p("Release sequence and observed result", "SubLab"))
+    add(table([
+        row("Gate", "Primary evidence", "Outcome", header=True),
+        row("Teammate review", link("Implementation PR #71", "https://github.com/CPE334-Pockit/Pockit/pull/71") + "; " + link("release PR #72", "https://github.com/CPE334-Pockit/Pockit/pull/72"), "Workflow accepted into lab5; separate staging-to-main release reviewed."),
+        row("Exact-SHA CI", link("Run 44995349976", "https://github.com/CPE334-Pockit/Pockit/actions/runs/44995349976"), "57 tests passed, 0 failed, on b315c99b7e68ec4061bd131aff016bb19ed6c899."),
+        row("Keyless cloud auth", link("Run 44995350059", "https://github.com/CPE334-Pockit/Pockit/actions/runs/44995350059"), "WIF succeeded without service-account key."),
+        row("Migration and rollout", link("Deploy run", "https://github.com/CPE334-Pockit/Pockit/actions/runs/44995350059"), "Migration, bootstrap, image push, service update and smoke passed."),
+        row("Serving revision", link("Deployment record", "https://github.com/CPE334-Pockit/Pockit/blob/lab5/docs/labs/lab-05/deployment.md"), "00005-qd5 Ready/100%; image tag equals full release SHA."),
+    ], [113, 180, 241]))
     add(HRFlowable(width="100%", thickness=0.7, color=colors.HexColor("#b7cccb")))
     add(Spacer(1, 7))
     add(p("Evidence limits: the first cloud restart has team observation and revision/readiness evidence but no separate screenshot. The two old after-stage files were byte-identical, so only one is used. The new after-actions screenshot is distinct. No real financial data, credentials or raw browser chrome are included in this PDF.", "SmallLab"))
