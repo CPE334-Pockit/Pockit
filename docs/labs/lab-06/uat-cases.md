@@ -80,7 +80,7 @@ Use only synthetic data. Do not reset or delete the shared course database. Do n
 
 - **Purpose:** Verify that one User cannot read another User's financial records and an Administrator cannot read any financial data.
 - **Roles:** Pockit Course User (User), UAT User B (User), Pockit Administrator (Administrator).
-- **Preconditions:** The Product Team privately provides valid synthetic credentials and the account ID of UAT User B's Main bank. Confirm both Users have financial data and the Administrator account is active. No password or session token is included in evidence.
+- **Preconditions:** The Product Team privately provides valid synthetic credentials and the account ID of UAT User B's Main bank. Confirm both Users have financial data and the Administrator account is active. Before testing, capture User A's and User B's account lists, balances, summary totals and history IDs while signed in as each owner. No password or session token is included in evidence.
 - **Read-only request method:** While logged into the deployed app, use the browser's same-origin DevTools console. For a direct account lookup, run the following with User B's supplied synthetic account ID:
 
   ```js
@@ -102,12 +102,13 @@ Use only synthetic data. Do not reset or delete the shared course database. Do n
 
   Do not copy cookies or tokens from DevTools.
 - **Actions:**
-  1. Sign in as the Course User and confirm the account list contains only that User's accounts.
+  1. Sign in as the Course User and confirm the account list contains only that User's accounts. Record User A's account balances, summary totals and history IDs for comparison.
   2. Run the direct `finance.accounts.get` query for UAT User B's Main bank ID.
-  3. Sign out and sign in as the Administrator.
-  4. Run no-input reads for `finance.accounts.list`, `finance.summary.get` and `finance.transactions.history`. Also run the direct account lookup for a known account ID.
-  5. Inspect each response. If desired, call the Administrator's User list and confirm its response contains only identity/access fields, not finance data.
-- **Expected results:** User A's account list excludes User B. The direct foreign-account lookup returns a non-disclosing not-found result and no account data. Each Administrator finance query is forbidden and returns no account, transaction, balance, category or summary content. The Administrator User list contains no finance fields. No financial state changes because all requests are reads.
+  3. As User A, re-read the account list, balances, summary and history; compare them with User A's pre-test snapshot. Sign out.
+  4. Sign in as the Administrator. Run no-input reads for `finance.accounts.list`, `finance.summary.get` and `finance.transactions.history`, and run the direct account lookup for a known account ID.
+  5. Inspect each response. Call `admin.users.list` and confirm it contains identity/access fields only. Sign out.
+  6. Sign in as UAT User B and compare the account list, balances, summary totals and history IDs with User B's pre-test snapshot.
+- **Expected results:** User A's account list excludes User B. The direct foreign-account lookup is denied without revealing whether the account exists or returning financial data. The response status and error shape may vary; do not require a specific `NOT_FOUND` or `FORBIDDEN` response. Administrator finance queries are denied without returning account, transaction, balance, category or summary content. The Administrator User list contains no finance fields. User A's and User B's post-test snapshots match their pre-test snapshots; the attempts cause no financial state changes.
 
 **Blocker:** This case is designed but not executable on the current deployed account set. Do not check AC-L6-A-03 until both identities and their synthetic records are provisioned on the tested release and this case is independently run.
 
@@ -139,7 +140,9 @@ Use only synthetic data. Do not reset or delete the shared course database. Do n
   1. Sign in as Fresh UAT User and open `/dashboard`.
   2. Select **Starting balance**, choose Main bank, enter THB 1,000.00, and select **Save opening balance**.
   3. Reload the account and summary views and inspect history.
-- **Expected results:** Main bank Cash balance and opening balance equal THB 1,000.00. Income, Expense, category totals and transaction history are unchanged. A second opening-balance submission is rejected without changing state.
+  4. Select **Starting balance** again and try to record a second opening balance of THB 2,000.00 on Main bank. If the completed state hides the form, record that the UI prevents a second submission. If the form remains available, submit once and record the rejection.
+  5. Reload the account and summary views again and compare them with the post-opening-balance state from step 3.
+- **Expected results:** Main bank Cash balance and opening balance equal THB 1,000.00. Income, Expense, category totals and transaction history are unchanged. The UI shows the opening balance is already recorded and does not offer a second submission, or the server rejects the second attempt. The opening balance and all financial totals remain unchanged after step 4.
 
 **Blocker:** The existing public Main bank has already recorded financial activity, so it cannot safely serve as a fresh opening-balance account. Do not reset it. This case remains blocked until the Fresh UAT User/account is provisioned.
 
