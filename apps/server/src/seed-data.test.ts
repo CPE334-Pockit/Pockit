@@ -2,6 +2,7 @@ import type { Context } from "@Pockit/api/context";
 import { appRouter } from "@Pockit/api/routers/index";
 import { createPrismaClient } from "@Pockit/db";
 import { afterAll, beforeAll, expect, it } from "bun:test";
+import { bootstrapDemoUsers } from "./bootstrap-demo-data";
 import {
   DEMO_ADMIN,
   DEMO_FINANCIAL_ACCOUNTS,
@@ -131,4 +132,99 @@ it("seeds synthetic identities and owned finance accounts idempotently", async (
   expect(
     await db.financialTransaction.count({ where: { ownerId: bank.ownerId } }),
   ).toBe(1);
+});
+
+it("bootstraps three distinct demo credentials without resetting finance data", async () => {
+  await clearDemoFixtures();
+  const passwords = {
+    user: "first-demo-password-123",
+    secondUser: "second-demo-password-456",
+    administrator: "admin-demo-password-789",
+  };
+  expect(await bootstrapDemoUsers(db, passwords)).toEqual({ created: 3 });
+
+  const users = await db.user.findMany({
+    where: { id: { in: demoUserIds } },
+  });
+  expect(users.map(({ email, role }) => ({ email, role }))).toEqual(
+    expect.arrayContaining([
+      { email: DEMO_USER.email, role: "User" },
+      { email: DEMO_SECOND_USER.email, role: "User" },
+      { email: DEMO_ADMIN.email, role: "Administrator" },
+    ]),
+  );
+  expect(
+    await db.financialAccount.count({ where: { ownerId: DEMO_ADMIN.id } }),
+  ).toBe(0);
+  expect(
+    await db.financialAccount.count({
+      where: { ownerId: { in: [DEMO_USER.id, DEMO_SECOND_USER.id] } },
+    }),
+  ).toBe(10);
+
+  const beforeCredentials = await db.account.findMany({
+    where: { userId: { in: demoUserIds }, providerId: "credential" },
+    select: { id: true, userId: true, password: true },
+  });
+  expect(beforeCredentials).toHaveLength(3);
+  for (const credential of beforeCredentials) {
+    expect(credential.password).toBeTruthy();
+    expect(Object.values(passwords)).not.toContain(credential.password);
+  }
+
+  const bank = await db.financialAccount.findUniqueOrThrow({
+    where: { id: "pockit-demo-user-bank" },
+  });
+  await db.financialAccount.update({
+    where: { id: bank.id },
+    data: { openingBalanceMinorUnits: "12345" },
+  });
+  const transaction = await db.financialTransaction.create({
+    data: {
+      ownerId: DEMO_USER.id,
+      form: "RECEIVE_MONEY",
+      totalMinorUnits: "1000",
+      transactionDate: new Date("2026-11-22T00:00:00.000Z"),
+      sourceAccountId: bank.id,
+      description: "Synthetic UAT record to preserve",
+    },
+  });
+
+  expect(await bootstrapDemoUsers(db, passwords)).toEqual({ created: 0 });
+  expect(
+    await db.account.findMany({
+      where: { userId: { in: demoUserIds }, providerId: "credential" },
+      select: { id: true, userId: true, password: true },
+    }),
+  ).toEqual(beforeCredentials);
+  expect(
+    await db.financialAccount.findUniqueOrThrow({ where: { id: bank.id } }),
+  ).toMatchObject({ openingBalanceMinorUnits: "12345" });
+  expect(
+    await db.financialTransaction.findUnique({ where: { id: transaction.id } }),
+  ).toMatchObject({ description: "Synthetic UAT record to preserve" });
+});
+
+it("rejects weak, reused and conflicting production demo identities", async () => {
+  await clearDemoFixtures();
+  const passwords = {
+    user: "first-demo-password-123",
+    secondUser: "second-demo-password-456",
+    administrator: "admin-demo-password-789",
+  };
+  await expect(
+    bootstrapDemoUsers(db, { ...passwords, administrator: "short" }),
+  ).rejects.toThrow("at least 16 characters");
+  await expect(
+    bootstrapDemoUsers(db, { ...passwords, administrator: passwords.user }),
+  ).rejects.toThrow("distinct");
+  expect(await db.user.count({ where: { id: { in: demoUserIds } } })).toBe(0);
+
+  await db.user.create({
+    data: { ...DEMO_ADMIN, role: "User", emailVerified: true },
+  });
+  await expect(bootstrapDemoUsers(db, passwords)).rejects.toThrow(
+    "Reserved demo identity conflict",
+  );
+  expect(await db.user.count({ where: { id: { in: demoUserIds } } })).toBe(1);
 });
