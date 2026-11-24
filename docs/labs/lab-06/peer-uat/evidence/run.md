@@ -1,79 +1,93 @@
-# Pocket Ledger UAT — in progress
+# Pocket Ledger Sprint 1 UAT results
 
-Deployment commit matched handoff: 37593da1cb3cd881e6b22845a2b4a929dbf6bc8e.
+We ran part of the agreed test suite and did not record an acceptance decision. [Lab 6 Part B #53](https://github.com/CPE334-Pockit/Pockit/issues/53)
 
-UAT-08 partial: Alice 1 reached Overview as User. Evidence: EV-UAT08-01.png and EV-UAT08-02.png. Other identity checks not run.
+- We tested [`37593da`](https://github.com/Palapluem/pocket-ledger/commit/37593da1cb3cd881e6b22845a2b4a929dbf6bc8e) on the [Pocket Ledger deployment](https://pocket-ledger-468473091761.asia-southeast3.run.app/). Health reported the expected commit and a healthy database.
+- The [partner handoff](../requirements/uat-instructions.md) defines the cases. We did not record who ran each case.
+- The table links to key evidence. Screenshots are grouped by case under `screenshot/`; JSON responses and text logs are grouped under `artifacts/`.
 
-UAT-01 baseline only: five accounts at THB 0.00; opening-balance form available. No financial changes submitted. No case passes or acceptance recorded.
+## Case results
 
-UAT-01 partial: D=2026-11-22. Opening balance THB 10,000.00 saved (EV-UAT01-02.png). Salary THB 20,000.00 saved; app reported a fresh history read. Receipt screenshot capture timed out. Split charge and repayment not yet run. Preserve A1 state; resume at step 5, do not repeat writes.
+| Case | Result | What we observed | Key evidence |
+| --- | --- | --- | --- |
+| UAT-01 Finance journey | Observed; evidence gaps | Opening balance 10,000; salary 20,000; card charge 1,200 split 700/500; repayment 500. Final bank 29,500, card debt 700, income 20,000, expense 1,200, three transactions. Amounts in THB. Some intermediate screenshots were missed. | [Opening balance](screenshot/uat-01/EV-UAT01-02.png) [Overview](screenshot/uat-01/EV-UAT01-07.png) [History](screenshot/uat-01/EV-UAT01-08.png) |
+| UAT-02 Allocation mismatch | Observed; evidence gap | Payment and receipt mismatches were rejected. Final state matched the baseline; no separate snapshot between attempts. | [Payment](screenshot/uat-02/EV-UAT02-01.png) [Receipt](screenshot/uat-02/EV-UAT02-03.png) [Final state](screenshot/uat-02/EV-UAT02-final-overview.png) |
+| UAT-03 Amount and date limits | Observed with deviations | Overpayment, overdraft, invalid amounts and invalid dates were rejected. Final state matched the baseline. The first overpayment used the default date rather than the fixture date; per-attempt history snapshots were incomplete. | [Amount observations](artifacts/uat-03/UAT03-observations.txt) [Future-date rejection](screenshot/uat-03/EV-UAT03-08-receipt.png) [Final state](screenshot/uat-03/EV-UAT03-final.png) |
+| UAT-04 User ownership | Partial | Bob's Overview showed only his own state. Alice's transaction lookup returned 404. No direct Bank detail result was recorded; write checks were skipped. | [Bob's Overview](screenshot/uat-04/EV-UAT04-B1-overview.png) [Alice's post-read state](screenshot/uat-04/EV-UAT04-05-A1-current.png) |
+| UAT-05 Administrator privacy | Partial | Finance routes redirected Admin; finance API reads returned 403. The user list contained identity/access fields only. Alice was denied Manage Users access. Administrator write checks were skipped. | [Finance detail denied](screenshot/uat-05/EV-UAT05-admin-detail.png) [User list fields](artifacts/uat-05/UAT05-admin-user-fields.txt) [Alice denied](screenshot/uat-05/EV-UAT05-A1-admin-ui.png) |
+| UAT-06 Disable and re-enable | PASS | Alice 2's disabled status persisted on reload and sign-in was refused. The account was re-enabled and sign-in worked again. | [Disabled](screenshot/uat-06/EV-UAT06-disabled.png) [Rejected sign-in](screenshot/uat-06/EV-UAT06-login-refused.png) [Restored](screenshot/uat-06/EV-UAT06-login-restored.png) |
+| UAT-07A Fresh session | PASS | After signing in again in a fresh browser session, we saw the same three transactions in the same order, with matching IDs, amounts, and allocations. | [Before](artifacts/uat-07/UAT07A-before.json) [After](artifacts/uat-07/UAT07A-after.json) [Repayment](screenshot/uat-07/EV-UAT07A-detail-0-full.png) [Charge](screenshot/uat-07/EV-UAT07A-detail-1-full.png) [Receipt](screenshot/uat-07/EV-UAT07A-detail-2-full.png) |
+| UAT-07B Reported restart | Data matched; restart reported | After the reported restart, the commit was unchanged and the three transaction records matched the baseline exactly. We did not independently verify the restart time or revision. | [Baseline](artifacts/uat-04/UAT04-05-A1-current.json) [After](artifacts/uat-07/UAT07B-after.json) [Overview](screenshot/uat-07/EV-UAT07B-overview.png) |
+| UAT-08 Identity and access | Observed | The app gave the same error for a wrong password and an unknown email. Valid sign-in worked; sign-out and direct Overview access returned to sign-in. Three anonymous finance endpoints returned 401. | [Wrong password](screenshot/uat-08/EV-UAT08-wrong-password.png) [Anonymous response](screenshot/uat-08/EV-UAT08-anonymous-accounts.png) |
+| UAT-09 Repeat submission | PASS | A double-click saved exactly one THB 100 receipt. Bank and income each increased by THB 100. | [Overview](screenshot/uat-09/EV-UAT09-overview.png) [History](screenshot/uat-09/EV-UAT09-history.png) |
+| UAT-10 Keyboard and layout | Observed | Tab order and visible focus were checked. Tab/Enter sign-in used automated password insertion. No clipping, overlap or horizontal overflow was observed at 390, 768 or 1280 px on the tested pages. Bob's empty-history messages matched expectations. | [Focus log](artifacts/uat-10/UAT10-keyboard-focus.txt) [390 px payment](screenshot/uat-10/EV-UAT10-payment-390-full.png) [Empty history](screenshot/uat-10/EV-UAT10-empty-history.png) |
 
-UAT-01 continued: verified salary Overview (Bank 30000, Income 20000); saved card charge 1200 split Dining 700 / Groceries 500, then Bank repayment 500. Final Overview: Bank 29500, card 700, Income 20000, Expense 1200, three dated history entries. Detailed history checks and remaining cases not run. Do not repeat writes.
+## Limits on acceptance
 
-Verified screenshots: EV-UAT01-07 final Overview; EV-UAT01-08 history list; EV-UAT01-08-{repayment,charge,salary} each transaction detail. All three details matched handoff amounts, accounts and date. Earlier timed-out intermediate frames were not reconstructed. No other case result claimed.
+- UAT-04 and UAT-05 cover read denials only. The write checks did not run.
+- UAT-07B confirms matching data after a reported restart. We did not independently verify the restart time or revision.
+- UAT-01 to UAT-03 have gaps noted in the results table.
 
-UAT-02 receipt rejection observed: THB 100.00 total / 99.00 salary allocation; app replied “Allocations must add up exactly to the total.” Payment rejection and state comparison pending.
+## Screenshot evidence
 
-UAT-02 payment: credit card THB 1200.00 with Dining 700.00 and Groceries 400.00, dated 2026-11-22. Displayed allocated 1100.00 of 1200.00 and exact-total rejection. EV-UAT02-01.png saved. Final state comparison pending.
+### UAT-01 final balances
 
-UAT-02 final state: verified both mismatch rejections and final Overview equals UAT-01 baseline (Bank 29500, card 700, Salary and Income 20000, Dining 700, Groceries 500, Expense 1200, three unchanged history entries). Evidence: EV-UAT02-01.png, EV-UAT02-03.png, EV-UAT02-final-overview.png. No immediate separate state capture between the two rejects. UAT-07B BLOCKED: no confirmed product-team restart.
+![Final Overview showing the bank balance, card debt, and income and expense totals](screenshot/uat-01/EV-UAT01-07.png)
 
-UAT-03 step 1: 700.01 card overpayment rejected; EV-UAT03-01.png. Remaining boundaries pending.
+<details>
+<summary>UAT-02 and UAT-03 Validation</summary>
 
-UAT-03 step 2: Bank overdraft of THB 29500.01 dated 2026-11-22 rejected as negative balance (EV-UAT03-02.png). Step 1 used form default date 2026-11-23, not fixture date D; record as deviation.
+![Payment allocation mismatch rejection](screenshot/uat-02/EV-UAT02-01.png)
 
-UAT-03 step 6 interrupted: tester screenshot EV-UAT03-06-interrupted.png shows “Sign in to continue” and amount fields with a leading “-- ”. This attempt did not verify the maximum-amount rule. Retest signed in with exactly 1000000000.01 in both fields.
+![Receipt allocation mismatch rejection](screenshot/uat-02/EV-UAT02-03.png)
 
-UAT-03 steps 5–6 retested signed in: exact inputs -5.00 and 1000000000.01 in both fields rejected with form validation. EV-UAT03-05-retest.png and EV-UAT03-06-retest.png verified.
+![Future-dated receipt rejection](screenshot/uat-03/EV-UAT03-08-receipt.png)
 
-Removed two interrupted screenshots showing “Sign in to continue”; signed-in retest screenshots for steps 5–6 replace them.
+![Unchanged Overview after boundary checks](screenshot/uat-03/EV-UAT03-final.png)
 
-UAT-03 final: payment date 2026-11-24 exceeds browser max 2026-11-23; receipt rejected with “The date cannot be later than today.” EV-UAT03-08-payment.png and EV-UAT03-08-receipt.png. Final Overview (EV-UAT03-final.png) matches baseline: Bank 29500, card 700, Income 20000, Expense 1200, three unchanged history entries. Earlier step-1 date deviation and missing per-attempt history snapshots remain limitations.
+</details>
 
-UAT-07A: signed out, closed browser, opened a fresh browser and signed in as A1. Before/after transaction responses matched byte-for-byte; Overview confirmed expected balances. Evidence: UAT07A-before.json, UAT07A-after.json, EV-UAT07A-overview.png.
+<details>
+<summary>UAT-04 to UAT-06 Roles and access</summary>
 
-UAT-07A: all three fresh-session history detail screenshots saved (EV-UAT07A-detail-0 through -2).
+![Bob's Overview shows no transactions](screenshot/uat-04/EV-UAT04-B1-overview.png)
 
-UAT-10 partial: B1 Overview and Transaction history show expected empty messages (EV-UAT10-empty-overview.png and EV-UAT10-empty-history.png). Payment form had no page-level horizontal overflow at 390, 768, 1280 px; 390px evidence EV-UAT10-payment-390.png. Keyboard and remaining page checks pending.
+![Administrator transaction-detail access denied](screenshot/uat-05/EV-UAT05-admin-detail.png)
 
-UAT-05 UI: Admin 1 Overview showed Administrator role and Manage users, without financial balances, totals, or history. EV-UAT05-admin-overview.png. Direct checks not run.
+![Alice denied access to Manage Users](screenshot/uat-05/EV-UAT05-A1-admin-ui.png)
 
-UAT-06: Alice 2 enabled initially; Admin 1 disabled only Alice 2; Disabled persisted on reload and sign-in returned Invalid email or password. Re-enabled Alice 2, confirmed Enabled after reload and successful sign-in. Four EV-UAT06 screenshots saved.
+![Alice 2 disabled](screenshot/uat-06/EV-UAT06-disabled.png)
 
-UAT-09: Alice 2 started at zero with empty history. Browser double-click on Save receipt for THB 100.00 dated 2026-11-22. Overview shows Bank and Income 100.00, and history has exactly one row. EV-UAT09-overview.png and EV-UAT09-history.png.
+![Alice 2 signed in after re-enabling](screenshot/uat-06/EV-UAT06-login-restored.png)
 
-UAT-10: sign-in controls focused in order Email → Password → Sign in with focus-visible true; Tab/Enter sign-in succeeded as S1 (password inserted into focused field via automation). Full-page result screenshot visually verified. All six pages had no measured horizontal page overflow at 390/768/1280; clipping/overlap not visually audited for every page/width. B1 empty-state checks captured earlier.
+</details>
 
-UAT-08: sign-out + Back showed sign-in, direct /overview redirected to /login, known synthetic account with wrong password and unknown formatted email both returned Invalid email or password. EV-UAT08-invalid-login.png shows the unknown-email result. Anonymous accounts, transactions and summary returned 401. Successful sign-in was observed earlier.
+<details>
+<summary>UAT-07 Persistence</summary>
 
-UAT-08 evidence supplement: visually verified EV-UAT08-wrong-password.png and EV-UAT08-anonymous-{accounts,transactions,summary}.png. “Sign in to continue” is expected for these three anonymous endpoint responses, unlike the interrupted signed-in UAT-03 attempts.
+![Fresh-session repayment detail](screenshot/uat-07/EV-UAT07A-detail-0-full.png)
 
-UAT-05 direct read checks: after fresh Admin 1 sign-in, accounts, transactions and summary endpoints each returned FORBIDDEN, no finance data. EV-UAT05-admin-{accounts,transactions,summary}.png. This does not establish the full role-boundary case.
+![Fresh-session split charge detail](screenshot/uat-07/EV-UAT07A-detail-1-full.png)
 
-UAT-10 final visual review: sign-in at 390/768/1280 and payment at 768/1280 captured full-page and visually reviewed. No clipping or overlap observed. Earlier 390px Overview evidence is EV-UAT04-B1-overview.png.
+![Fresh-session salary receipt detail](screenshot/uat-07/EV-UAT07A-detail-2-full.png)
 
-## Final evidence audit (not an acceptance decision)
+![Overview after the reported restart](screenshot/uat-07/EV-UAT07B-overview.png)
 
-- UAT-01: finance journey and three details observed; original intermediate screenshots missing.
-- UAT-02: both mismatches rejected and final state unchanged; no snapshot between attempts.
-- UAT-03: boundary rejections and final state recorded; per-attempt snapshots incomplete, first date deviated.
-- UAT-04: UI isolation observed; direct cross-user checks incomplete.
-- UAT-05: Administrator UI/read denials observed; remaining role-boundary checks incomplete.
-- UAT-06: pass; spare user re-enabled and sign-in verified.
-- UAT-07A: pass; identical transaction responses across fresh sessions and full-page detail images.
-- UAT-07B: blocked; no partner-confirmed restart.
-- UAT-08: sign-in, rejection, signed-out redirect and anonymous 401 checks recorded.
-- UAT-09: pass; one receipt after double-click.
-- UAT-10: layout, sign-in focus/navigation and empty history observed.
+</details>
 
-UAT-04 direct read: B1 requested one A1 synthetic transaction detail and received HTTP 404 NOT_FOUND. No transaction fields observed in the recorded result. UAT-05 same check returned 401 with expired Admin session; not role-denial evidence.
+<details>
+<summary>UAT-08 to UAT-10 Sign-in, duplicate submission, and layout</summary>
 
-UAT-05 Admin transaction detail: after re-login, direct read returned 403 FORBIDDEN; see UAT05-admin-detail.json and EV-UAT05-admin-detail.png.
+![Wrong-password rejection](screenshot/uat-08/EV-UAT08-wrong-password.png)
 
-UAT-04/05 post-read evidence: A1 transaction response byte-identical to UAT07A-after.json; bank 29,500 and card debt 700. No write-denial claim.
+![Anonymous finance request denied](screenshot/uat-08/EV-UAT08-anonymous-accounts.png)
 
-UAT-05 regular-User denial repeated on prescribed A1: Manage Users page denied access and API returned 403 FORBIDDEN. EV-UAT05-A1-admin-ui.png; UAT05-A1-admin-api.json.
+![One receipt in history after double-clicking Save](screenshot/uat-09/EV-UAT09-history.png)
 
-Supporting evidence (not independent live UAT): Pocket Ledger CI run 44885832238 passed on deployed SHA 37593da1cb3cd881e6b22845a2b4a929dbf6bc8e. CI logs explicitly passed TEST-21 cross-user write denial/no write and TEST-08 Administrator transaction detail/create denial. This does not verify the outstanding opening-balance attempts or replace live UAT-04/05.
+![Full payment form at 390 pixels](screenshot/uat-10/EV-UAT10-payment-390-full.png)
 
-UAT-07B: operator reported restart complete. Post-restart health on 37593da1cb3cd881e6b22845a2b4a929dbf6bc8e, database ok. A1 transaction JSON byte-identical to prior baseline; Bank 29500, card debt 700, income 20000, expense 1200. EV-UAT07B-overview.png and UAT07B-after.json. Restart revision/time not independently verified. UAT-04/05 write portions skipped at operator direction, not passed.
+</details>
+
+## Automated test evidence
+
+ [Pocket Ledger CI](https://github.com/Palapluem/pocket-ledger/actions/runs/44885832238) on the tested commit passed cross-user transaction write denial (TEST-21) and Administrator transaction creation denial (TEST-08). It does not replace the skipped live write checks or verify opening-balance denial.
