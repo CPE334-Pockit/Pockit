@@ -3,7 +3,7 @@
 We ran part of the agreed test suite and did not record an acceptance decision. [Lab 6 Part B #53](https://github.com/CPE334-Pockit/Pockit/issues/53)
 
 - We tested [`37593da`](https://github.com/Palapluem/pocket-ledger/commit/37593da1cb3cd881e6b22845a2b4a929dbf6bc8e) on the [Pocket Ledger deployment](https://pocket-ledger-468473091761.asia-southeast3.run.app/). Health reported the expected commit and a healthy database.
-- The [partner handoff](../requirements/uat-instructions.md) defines the cases. We did not record who ran each case.
+- The [partner handoff](../requirements/uat-instructions.md) defines the cases. [Guntee Doungmanee](https://github.com/ovenmakemeheat), student ID `67070501003`, ran each case. The results table notes which steps were skipped or lacked evidence.
 - The table links to key evidence. Screenshots are grouped by case under `screenshot/`; JSON responses and text logs are grouped under `artifacts/`.
 
 ## Case results
