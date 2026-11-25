@@ -1,0 +1,18 @@
+✓ Done
+{
+  "focusVisible": true,
+  "label": "Email",
+  "tag": "INPUT"
+}
+✓ Done
+{
+  "focusVisible": true,
+  "label": "Password",
+  "tag": "INPUT"
+}
+✓ Done
+{
+  "focusVisible": true,
+  "label": "Sign in",
+  "tag": "BUTTON"
+}

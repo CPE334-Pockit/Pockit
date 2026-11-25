@@ -1,0 +1,36 @@
+{
+  "path": "/transactions/receive",
+  "scroll": 390,
+  "title": "Receive money",
+  "width": 390
+}
+{
+  "path": "/transactions",
+  "scroll": 390,
+  "title": "Transaction history",
+  "width": 390
+}
+{
+  "path": "/transactions/receive",
+  "scroll": 768,
+  "title": "Receive money",
+  "width": 768
+}
+{
+  "path": "/transactions",
+  "scroll": 768,
+  "title": "Transaction history",
+  "width": 768
+}
+{
+  "path": "/transactions/receive",
+  "scroll": 1280,
+  "title": "Receive money",
+  "width": 1280
+}
+{
+  "path": "/transactions",
+  "scroll": 1280,
+  "title": "Transaction history",
+  "width": 1280
+}

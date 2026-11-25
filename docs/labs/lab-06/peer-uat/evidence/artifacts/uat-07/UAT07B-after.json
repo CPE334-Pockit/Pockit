@@ -1,0 +1,54 @@
+{
+  "body": [
+    {
+      "allocations": [
+        {
+          "accountId": "e7b0388c-a9fd-4673-a65a-8bd187754df3",
+          "amount": "500.00"
+        }
+      ],
+      "createdAt": "2026-11-23T12:41:21.000Z",
+      "date": "2026-11-22",
+      "form": "PAYMENT",
+      "id": "eb447e94-d3c2-4a17-8050-58c5edef0394",
+      "memo": null,
+      "primaryAccountId": "98726be7-232d-4e65-926b-0406dcabf708",
+      "total": "500.00"
+    },
+    {
+      "allocations": [
+        {
+          "accountId": "282c0e18-5b8a-49d7-8a1e-f0f045c34ea2",
+          "amount": "700.00"
+        },
+        {
+          "accountId": "f1b3e495-b5ca-434c-80f3-2d23fbc70ae2",
+          "amount": "500.00"
+        }
+      ],
+      "createdAt": "2026-11-23T12:40:05.000Z",
+      "date": "2026-11-22",
+      "form": "PAYMENT",
+      "id": "c66cbc86-4124-4c13-affa-40c39b99ca48",
+      "memo": null,
+      "primaryAccountId": "e7b0388c-a9fd-4673-a65a-8bd187754df3",
+      "total": "1200.00"
+    },
+    {
+      "allocations": [
+        {
+          "accountId": "70b7429b-36d3-446c-b190-6474bfdc4cdb",
+          "amount": "20000.00"
+        }
+      ],
+      "createdAt": "2026-11-23T12:37:49.000Z",
+      "date": "2026-11-22",
+      "form": "RECEIVE",
+      "id": "2092bbb4-990a-44d9-9102-9d5ab5ac82e1",
+      "memo": null,
+      "primaryAccountId": "98726be7-232d-4e65-926b-0406dcabf708",
+      "total": "20000.00"
+    }
+  ],
+  "status": 200
+}

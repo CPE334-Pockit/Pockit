@@ -1,0 +1,10 @@
+{
+  "fields": [
+    "displayName",
+    "email",
+    "enabled",
+    "id",
+    "role"
+  ],
+  "status": 200
+}

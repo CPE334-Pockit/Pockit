@@ -1,0 +1,36 @@
+{
+  "path": "/overview",
+  "scroll": 390,
+  "title": "Signed in",
+  "width": 390
+}
+{
+  "path": "/accounts",
+  "scroll": 390,
+  "title": "Accounts",
+  "width": 390
+}
+{
+  "path": "/overview",
+  "scroll": 768,
+  "title": "Signed in",
+  "width": 768
+}
+{
+  "path": "/accounts",
+  "scroll": 768,
+  "title": "Accounts",
+  "width": 768
+}
+{
+  "path": "/overview",
+  "scroll": 1280,
+  "title": "Signed in",
+  "width": 1280
+}
+{
+  "path": "/accounts",
+  "scroll": 1280,
+  "title": "Accounts",
+  "width": 1280
+}

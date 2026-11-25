@@ -1,0 +1,6 @@
+Allocation amounts must add up exactly to the total. The server validates this before saving.
+Check the form, account, date and amounts (greater than 0, at most two decimals).
+Allocation amounts must add up exactly to the total. The server validates this before saving.
+Check the form, account, date and amounts (greater than 0, at most two decimals).
+Allocation amounts must add up exactly to the total. The server validates this before saving.
+Allocation amounts must add up exactly to the total. The server validates this before saving.
