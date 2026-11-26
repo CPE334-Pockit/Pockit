@@ -2,7 +2,7 @@
 
 [Part A #79](https://github.com/CPE334-Pockit/Pockit/issues/79) · [Implementation #80](https://github.com/CPE334-Pockit/Pockit/issues/80)
 
-Guntee reports that course staff said separate change approval can be skipped. This is a reported waiver of that step, not approval of this rule. MadMax must review this contract before implementation.
+Guntee reports that course staff said separate change approval can be skipped. This is a reported waiver of that step, not approval of this rule. Staff name, date and source are not yet recorded. MadMax must review this contract before implementation.
 
 ## Baseline
 
@@ -17,6 +17,12 @@ Sprint 1 tag `sprint1-v1.0.0` (`e99da77`); accepted Lab 6 deployment `b315c99b7e
 | Persistence and history | The router saves the transaction and allocation rows together. | Keep atomic writes and existing history, including old duplicate rows. No migration or balance recalculation because this changes validation for new purchases only. |
 | Unaffected flows | Salary receipts and repayment have separate rules. | Do not change those rules, owner isolation, Administrator finance denial, or exact minor-unit sums. |
 
+## Traceability
+
+- [SRS FR-06/FR-08](../../requirements/srs.md) and [Feature SDS FEAT-06](../../features/sprint1-feature-contracts.md) define the card purchase rule and F6-AC-01/04.
+- [System SDS sections 4.1, 4.3, 5 and 6](../../architecture/system-level-sds.md#4-transaction-and-balance-behavior) cover valid allocations, atomic writes, API/UI and privacy.
+- Change the purchase form in `apps/web/src/components/finance-dashboard.tsx` and server validation in `packages/api/src/routers/finance.ts`. Keep the existing transaction and summary read paths. See the [Sprint 1 STS](../../testing/sprint1-software-test-specification.md) for the regression IDs below.
+
 ## Sprint 1 test specification revision
 
 | Test | Setup and input | Expected result |
@@ -24,6 +30,8 @@ Sprint 1 tag `sprint1-v1.0.0` (`e99da77`); accepted Lab 6 deployment `b315c99b7e
 | STS-CARD-08; F6-AC-04 | Signed-in owner, owned card and Expense account. Submit 4.00 and 6.00 to the same account for a 10.00 purchase. | Reject with a duplicate-category error. Debt, totals and history remain unchanged. RED must fail because the old server accepts the request. |
 | STS-CARD-07; F6-AC-01 | Submit one owned Expense allocation of 10.00. | Save one allocation and increase card debt and Expense by exactly 10.00. |
 | STS-CARD-01; F6-AC-01/03 | Split 10.00 as 4.00 and 6.00 across two distinct owned Expense accounts. | Both allocations persist and change the category totals and debt by the exact amounts. |
-| Existing finance and authorization regressions | Repeat mismatch, foreign ownership, Administrator denial, salary and repayment checks. | Existing outcomes remain unchanged. |
+| STS-CARD-09; F6-AC-01/04 | In the purchase form, select the same category twice. Correct the allocation in the same draft and submit. | Show the duplicate error, keep the draft, and save only after correction. |
+| STS-CARD-10; F6-AC-03/05 | Seed a pre-change purchase with two lines in one category and read it as its owner. | History still shows both lines and the category total includes both amounts exactly once. |
+| STS-CARD-02/03/05 and STS-AUTHZ-05/08 | Repeat mismatch, foreign ownership, Administrator denial, salary and repayment checks. | Existing outcomes remain unchanged. |
 
 At release, verify the duplicate rejection and valid split with synthetic data on the corrected deployed revision. Record tested commits, RED/GREEN logs, CI, teammate review, and deployment evidence in Part B.
