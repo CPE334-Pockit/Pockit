@@ -44,6 +44,7 @@ Use synthetic fixtures with two enabled Users and an Administrator. Compare stor
 | F09-STS-06 | AC-F09-01, AC-F09-02 | API/database concurrency: run competing opening writes and attempt deletion against a posting for the same Account | At most one opening write persists. Concurrent posting and delete cannot leave dangling references or lose posted history. |
 | F09-STS-07 | AC-F09-01, AC-F09-02 | UI: add a Cash Account with an opening position, rename it, refresh, exercise a rejected action and delete an unused category with keyboard controls | Correct persisted display, reachable controls, visible rejection and current data after a successful action. |
 | F09-STS-08 | AC-F09-01, AC-F09-02 | Regression: Sprint 1 opening bank balance, salary, split card purchase, repayment, balance/summary/history and authorization checks | Original journey and financial isolation still work on the integration commit. |
+| F09-STS-09 | AC-F09-01 | UI: open the receive-money form with two Cash Accounts named Bank and choose the second Account | Each choice includes its displayed balance and Account ID. Submission uses the chosen ID. |
 
 ### Execution evidence
 
@@ -54,6 +55,8 @@ Local verification used Bun 1.3.9 and a temporary PostgreSQL 17 database. The ch
 | `9bf1fe5` | `bun test packages/api/src/routers/finance.test.ts -t 'records an exact opening position'` with disposable `DATABASE_URL` and `NODE_ENV=test` | RED: 0 pass, 1 fail, 13 filtered out. F09-STS-03 reached the API and failed with `BAD_REQUEST: An opening balance can only be set for a Cash Account`. |
 | `7004335` | `bun run test` with the same database and `NODE_ENV=test` | GREEN: 67 pass, 0 fail, 0 skipped. Web 16, server 22, API 27, database 2. F09-STS-03 passed with persisted `100.25` on the Loan Given Account. |
 | `7004335` | `bun run check-types` and `bun run build` | Both passed. Targeted Biome check on all eight changed TypeScript files and `git diff origin/staging-2...HEAD --check` also passed. |
+| `a6ef978` | From `apps/web`, `bun test src/components/finance-dashboard.test.tsx -t F09-STS-09` | RED: 0 pass, 1 fail, 7 filtered out. The picker label contained the name and ID but lacked the visible balance requested for disambiguation. |
+| `3e3fa01` | From `apps/web`, `bun test` and `bun run check-types` | GREEN: 17 pass, 0 fail, 0 skipped, including F09-STS-09 in [finance-dashboard.test.tsx](../../apps/web/src/components/finance-dashboard.test.tsx). Web type check and build passed. |
 
 | Acceptance criterion | Executed verification | Result |
 | --- | --- | --- |
