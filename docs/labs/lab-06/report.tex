@@ -1,0 +1,85 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage[margin=22mm]{geometry}
+\usepackage{graphicx,array,tabularx,hyperref}
+\hypersetup{colorlinks=true,urlcolor=blue,linkcolor=blue}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{5pt}
+\renewcommand{\arraystretch}{1.25}
+\newcommand{\issue}[1]{\href{https://github.com/CPE334-Pockit/Pockit/issues/#1}{Issue \##1}}
+\newcommand{\evidence}{peer-uat/evidence/screenshot}
+\begin{document}
+\begin{center}
+{\LARGE Lab 6: Independent UAT and defect management}\\[6pt]
+{\large Pockit, Theme 7: Personal Money and Expense Logging System}
+\end{center}
+\begin{tabularx}{\linewidth}{lX}
+Product team & \href{https://github.com/ovenmakemeheat}{Guntee Doungmanee}, 67070501003; \href{https://github.com/MadMax168}{Polwarit Watthanahemmarat}, 67070501067 \\
+Partner team & 2-Nor: Natthawat Primsirikunawut, 67070501027; Wisit Suwannao, 67070501042 \\
+Repositories & \href{https://github.com/CPE334-Pockit/Pockit}{Pockit}; \href{https://github.com/Palapluem/pocket-ledger}{Pocket Ledger} \\
+\end{tabularx}
+
+\textbf{Decision.} On 24 November 2026, Natthawat independently accepted the original Pockit release after five passes. Pockit's separate test of Pocket Ledger skipped required write checks in Pocket Ledger's UAT-04 and UAT-05. Acceptance of Pocket Ledger remains unresolved. Those cases are not Pockit's UAT-PKT cases and do not change Natthawat's decision on Pockit.
+\tableofcontents
+
+\section{Part A: Pockit handoff}
+Pockit's Sprint 1 covers sign-in, account balances, one-time opening balance, salary receipt, split card purchases, repayment, history and finance access restrictions. Baseline tag \texttt{sprint1-v1.0.0} points to \texttt{e99da77}. The partner tested deployed commit \texttt{b315c99b7e68ec4061bd131aff016bb19ed6c899}, revision \texttt{s4b043a2c-00005-qd5}, at the \href{https://s4b043a2c-4d7hbszvwq-as.a.run.app/dashboard}{Pockit dashboard}.
+
+\begin{tabularx}{\linewidth}{lX}
+Case & Handoff check \\\hline
+UAT-PKT-01 & Record salary, split card charge and repayment; check balances and totals. \\
+UAT-PKT-02 & Reject a split whose allocations do not match the total. \\
+UAT-PKT-03 & Deny cross-user and administrator finance reads without disclosure or state changes. \\
+UAT-PKT-04 & Verify saved records and totals after signing in again. \\
+UAT-PKT-05 & Record an opening balance on a fresh Cash account and prevent a second save. \\
+\end{tabularx}
+
+Both students reviewed the handoff, and credentials were delivered privately. Use synthetic accounts only. Cases 01--03 are independent; 04 follows 01; 05 requires an unused account. Do not reset the shared database. See \issue{52} and the \href{https://github.com/CPE334-Pockit/Pockit/pull/74}{reviewed handoff PR} for the cases, inputs, steps and expected values.
+
+\section{Part B: Pockit tests Pocket Ledger}
+Guntee ran the recorded cases on commit \texttt{37593da1cb3cd881e6b22845a2b4a929dbf6bc8e} at the \href{https://pocket-ledger-468473091761.asia-southeast3.run.app/}{Pocket Ledger deployment}. Guntee reported that Polwarit cross-checked uncertain cases with a separate test account and reviewed the evidence; individual cross-check records were not supplied. See \issue{53} and the \href{https://github.com/CPE334-Pockit/Pockit/blob/1115d28/docs/labs/lab-06/peer-uat/evidence/run.md}{full run record}.
+
+\begin{tabularx}{\linewidth}{lX}
+Case & Actual outcome and evidence limits \\\hline
+01 & Recorded salary, split charge and repayment. Bank THB 29,500; card debt THB 700; three entries. Intermediate screenshots missing. \\
+02 & Both mismatches rejected. Final state unchanged. No snapshot between attempts. \\
+03 & Amount and date rejections observed. Final state unchanged. First overpayment date differed from fixture; per-attempt snapshots incomplete. \\
+04 & Partial. Bob did not see Alice's data in his Overview; direct transaction lookup returned 404. Write checks skipped; Bank detail result not recorded. \\
+05 & Partial. Administrator finance reads denied; ordinary User could not manage users. Write checks skipped. \\
+06 & PASS. Disabled the spare User, verified login refusal, re-enabled the account and verified login. \\
+07A & PASS. Same three transactions and allocations after signing in in a new browser session. \\
+07B & PASS. Same commit and records after the partner-documented restart. \\
+08 & Invalid logins rejected; anonymous finance requests returned 401; sign-out blocked access to Overview. \\
+09 & PASS. Double-click saved one THB 100 receipt. \\
+10 & Focus order, empty history and layout at 390, 768 and 1280 pixels checked. Password insertion used browser automation. \\
+\end{tabularx}
+
+Pocket Ledger's report identifies post-restart revision \texttt{pocket-ledger-00005-n78} at 14:45 UTC on 24 November. We verified the unchanged commit and data, not the Cloud Run rollout itself. The full record preserves the before and after responses.
+
+\begin{center}
+\includegraphics[width=.82\linewidth,height=.36\textheight,keepaspectratio]{\evidence/uat-07/EV-UAT07B-overview.png}\\
+\small EV-UAT07B-overview. Final balances and history after the documented restart.
+\end{center}
+
+\section{Part C: Findings and triage}
+\begin{tabularx}{\linewidth}{lX}
+Finding & Disposition \\\hline
+C-01 & UAT-PKT-01 requested a repayment description the form does not offer. A custom description is not a Sprint 1 requirement. The corrected guide identifies the repayment by label, date and amount. \\
+C-02 & UAT-PKT-03's example returned HTTP 400 because the documented input format was wrong. The partner used corrected input and observed the expected 404. The guide example was corrected. \\
+\end{tabularx}
+
+Neither finding showed an application defect. Both corrections merged in \href{https://github.com/CPE334-Pockit/Pockit/pull/91}{PR 91}; see \issue{54}. The outgoing Pocket Ledger report did not identify a confirmed defect. Skipped checks were reported as limitations.
+
+\section{Part D: Resolution and independent decision}
+Natthawat Primsirikunawut, Team 2-Nor, recorded \textbf{Accepted} on 24 November 2026 for Pockit commit \texttt{b315c99b7e68ec4061bd131aff016bb19ed6c899}, revision \texttt{s4b043a2c-00005-qd5}. The partner's Lab 6 PDF, Part B, records UAT-PKT-01 to UAT-PKT-05 as five passes, zero failures and zero blocked. Acceptance applies only to that release.
+
+No confirmed app defect required a fix. No controlled exercise was supplied. Guntee reported that the TA instructed the team to skip steps requiring TA contact. The team did not run a controlled exercise, deploy a corrective release or obtain a retest. \issue{55} is closed as Not planned. D-05 is verified; D-01 to D-04 and D-06 were not completed.
+
+\section{Contributions, AI use and limits}
+\begin{tabularx}{\linewidth}{lX}
+Student & Recorded contribution \\\hline
+Guntee & Prepared the Pockit handoff, ran Pocket Ledger cases, captured evidence and documented findings. \\
+Polwarit & Reviewed the Pockit handoff and identified two case-design improvements. Guntee reported the Part B cross-check and audit in \issue{53}. \\
+\end{tabularx}
+
+AI assisted with browser actions, screenshot capture, evidence checks and report drafting. Example instruction: ``Capture the Overview and transaction history after signing in again; compare the saved records with the baseline.'' The run record distinguishes observations, skipped checks and missing evidence. AI did not make the independent acceptance decision.
+\end{document}
