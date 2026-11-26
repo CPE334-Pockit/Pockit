@@ -4,6 +4,15 @@
 
 Natthawat Primsirikunawut (Team 2-Nor) independently tested Pockit on commit `b315c99b7e68ec4061bd131aff016bb19ed6c899`, Cloud Run revision `s4b043a2c-00005-qd5`. The partner's Lab 6 PDF records five passes, no failures or blocked cases, and an **Accepted** decision on 24 November 2026 for that release.
 
+## Independent decisions by product
+
+| Product under test | Independent tester | Decision |
+| --- | --- | --- |
+| Pockit (`b315c99`) | Natthawat Primsirikunawut, Pocket Ledger | **Accepted** for this release only. All five Pockit `UAT-PKT` cases passed. |
+| Pocket Ledger (`37593da`) | Guntee Doungmanee, Pockit | **Unresolved.** Pocket Ledger's required `UAT-04` and `UAT-05` write checks were skipped. Neither case is a full pass. |
+
+The skipped checks apply to Pocket Ledger, not to Pockit. Neither decision establishes completion of Lab 6.
+
 ## Incoming findings on Pockit
 
 | Finding | Case and setup | Expected and observed | Disposition |
