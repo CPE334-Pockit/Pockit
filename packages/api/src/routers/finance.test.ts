@@ -569,6 +569,74 @@ describe("Sprint 1 financial API", () => {
     ).toBe(countBeforeB);
   });
 
+  it("rejects repeated purchase categories without changing financial state", async () => {
+    const api = userCaller();
+    const snapshot = async () => ({
+      account: await api.finance.accounts.get({ accountId: accounts.card }),
+      summary: await api.finance.summary.get(),
+      history: await api.finance.transactions.history(),
+    });
+    const before = await snapshot();
+    await expect(
+      api.finance.transactions.create({
+        form: "PAYMENT_CHARGE",
+        sourceAccountId: accounts.card,
+        totalAmount: "10.00",
+        transactionDate: "2026-11-07",
+        allocations: [
+          { kind: "EXPENSE", accountId: accounts.dining, amount: "4.00" },
+          { kind: "EXPENSE", accountId: accounts.dining, amount: "6.00" },
+        ],
+      }),
+    ).rejects.toMatchObject({
+      code: "BAD_REQUEST",
+      message: "Use each expense category only once.",
+    });
+    expect(await snapshot()).toEqual(before);
+  });
+
+  it("keeps historical duplicate purchase categories readable", async () => {
+    const api = userCaller();
+    const before = (await api.finance.summary.get()).categories.find(
+      ({ accountId }) => accountId === accounts.dining,
+    )?.total;
+    const purchase = await db.financialTransaction.create({
+      data: {
+        ownerId: ids.userA,
+        form: "PAYMENT_CHARGE",
+        sourceAccountId: accounts.card,
+        transactionDate: new Date("2026-11-07"),
+        totalMinorUnits: "1000",
+        allocations: {
+          create: ["400", "600"].map((amountMinorUnits) => ({
+            kind: "EXPENSE",
+            account: {
+              connect: {
+                id_ownerId: { id: accounts.dining, ownerId: ids.userA },
+              },
+            },
+            amountMinorUnits,
+          })),
+        },
+      },
+    });
+    try {
+      const entry = (await api.finance.transactions.history()).find(
+        ({ id }) => id === purchase.id,
+      );
+      expect(entry?.allocations.map(({ amount }) => amount).sort()).toEqual([
+        "4.00",
+        "6.00",
+      ]);
+      const total = (await api.finance.summary.get()).categories.find(
+        ({ accountId }) => accountId === accounts.dining,
+      )?.total;
+      expect(Number(total) - Number(before ?? "0.00")).toBe(10);
+    } finally {
+      await db.financialTransaction.delete({ where: { id: purchase.id } });
+    }
+  });
+
   it("accepts a one-line card purchase and sums one-cent allocations exactly", async () => {
     const api = userCaller();
     const expensesBefore = (await api.finance.summary.get()).expenseTotal;

@@ -340,6 +340,9 @@ async function validateTransaction(
     if (!isExpense) {
       return badRequest("Card charges require Expense allocations");
     }
+    if (distinctAccountIds.length !== allocations.length) {
+      return badRequest("Use each expense category only once.");
+    }
   } else if (source.type === "CASH") {
     if (!repayments) {
       return badRequest(
