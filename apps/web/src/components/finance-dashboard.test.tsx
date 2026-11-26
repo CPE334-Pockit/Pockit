@@ -342,14 +342,16 @@ describe("finance dashboard", () => {
     fireEvent.click(view.getByRole("button", { name: /income received/i }));
 
     const picker = view.getByRole("combobox", { name: "Received into" });
-    const firstOption = view.getByRole<HTMLOptionElement>("option", {
+    const firstOption = view.getByRole("option", {
       name: "Bank · ฿100.00 · bank-first",
     });
-    const secondOption = view.getByRole<HTMLOptionElement>("option", {
+    const secondOption = view.getByRole("option", {
       name: "Bank · ฿250.00 · bank-second",
     });
-    expect(firstOption.value).toBe(firstBank.id);
-    fireEvent.change(picker, { target: { value: secondOption.value } });
+    expect(firstOption.getAttribute("value")).toBe(firstBank.id);
+    const selectedId = secondOption.getAttribute("value");
+    expect(selectedId).toBe(otherBank.id);
+    fireEvent.change(picker, { target: { value: selectedId } });
     fireEvent.input(view.getByLabelText("Amount received"), {
       target: { value: "15.00" },
     });

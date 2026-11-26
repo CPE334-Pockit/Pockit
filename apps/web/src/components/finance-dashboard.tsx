@@ -153,7 +153,7 @@ function SelectField({
   label: string;
   value: string;
   onChange: (value: string) => void;
-  options: { id: string; name: string }[];
+  options: Account[];
   placeholder: string;
   disabled?: boolean;
 }) {
@@ -178,7 +178,7 @@ function SelectField({
         {options.map((option) => (
           <option key={option.id} value={option.id}>
             {duplicateNames.has(option.name)
-              ? `${option.name} · ${option.id}`
+              ? `${option.name} · ${formatMoney(option.balance ?? option.categoryTotal)} · ${option.id}`
               : option.name}
           </option>
         ))}
