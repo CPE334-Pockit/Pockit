@@ -1,0 +1,8 @@
+accounts => https://pocket-ledger-468473091761.asia-southeast3.run.app/overview
+Admin 1 · Administrator
+transactions => https://pocket-ledger-468473091761.asia-southeast3.run.app/overview
+Admin 1 · Administrator
+transactions/receive => https://pocket-ledger-468473091761.asia-southeast3.run.app/overview
+Admin 1 · Administrator
+transactions/new => https://pocket-ledger-468473091761.asia-southeast3.run.app/overview
+Admin 1 · Administrator

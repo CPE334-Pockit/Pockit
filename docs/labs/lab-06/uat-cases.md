@@ -48,7 +48,7 @@ Use only synthetic data. Do not reset or delete the shared course database. Do n
 - **Purpose:** Verify that a User can record the implemented receipt, split card purchase and repayment, and that balances and totals change by the correct amounts.
 - **Role:** Pockit Course User (User).
 - **Preconditions:** The tester can log in. Main bank, Credit card, Salary, Dining and Groceries are visible. No one else is writing to this account during the test. Capture the current Cash balance `B0`, card debt `D0`, Income total `I0`, Expense total `E0`, Dining total `N0`, Groceries total `G0`, and history. All inputs are THB.
-- **Inputs:** Salary `1,500.00`; card purchase `100.00`, Dining `65.00`, Groceries `35.00`; repayment `40.00`; explicit date `2026-11-22` (or record the actual selected `YYYY-MM-DD`); unique descriptions `LAB6-UAT-<date>-01-salary`, `...-01-purchase`, and `...-01-repayment`.
+- **Inputs:** Salary `1,500.00`; card purchase `100.00`, Dining `65.00`, Groceries `35.00`; repayment `40.00`; explicit date `2026-11-22` (or record the actual selected `YYYY-MM-DD`); unique descriptions `LAB6-UAT-<date>-01-salary` and `...-01-purchase`. Repayment has no description field; identify the new `Credit-card repayment` entry by date, amount, and the before-state history.
 - **Actions:**
   1. Sign in as the User and open `/dashboard`.
   2. Select **Income received**. Set **Received into** to Main bank, **Income category** to Salary, **Amount received** to THB 1,500.00, and enter the specified date and unique description. Select **Record income**.
@@ -84,7 +84,7 @@ Use only synthetic data. Do not reset or delete the shared course database. Do n
 - **Read-only request method:** While logged into the deployed app, use the browser's same-origin DevTools console. For a direct account lookup, run the following with User B's supplied synthetic account ID:
 
   ```js
-  const input = encodeURIComponent(JSON.stringify({ "0": { json: { accountId: "<User B Main bank ID>" } } }));
+  const input = encodeURIComponent(JSON.stringify({ "0": { accountId: "<User B Main bank ID>" } }));
   const response = await fetch(`/trpc/finance.accounts.get?batch=1&input=${input}`, { credentials: "include" });
   console.log(response.status, await response.json());
   ```
@@ -93,8 +93,7 @@ Use only synthetic data. Do not reset or delete the shared course database. Do n
 
   ```js
   async function readProcedure(name) {
-    const input = encodeURIComponent(JSON.stringify({ "0": { json: null } }));
-    const response = await fetch(`/trpc/${name}?batch=1&input=${input}`, { credentials: "include" });
+    const response = await fetch(`/trpc/${name}`, { credentials: "include" });
     return { status: response.status, body: await response.json() };
   }
   await readProcedure("finance.accounts.list");
@@ -119,12 +118,12 @@ Use only synthetic data. Do not reset or delete the shared course database. Do n
 
 - **Purpose:** Verify that accepted transactions and calculated balances remain after leaving the authenticated session and returning through the deployed application.
 - **Role:** Pockit Course User (User).
-- **Preconditions:** UAT-PKT-01 passed. Record its exact post-state and the three unique transaction descriptions.
+- **Preconditions:** UAT-PKT-01 passed. Record its exact post-state and the two unique descriptions and the new repayment entry.
 - **Actions:**
   1. Sign out.
   2. Sign in again as the same User in a fresh browser page or session.
   3. Reload the dashboard and history.
-  4. Find the three UAT-PKT-01 descriptions and compare balances, summary and category totals with the recorded post-state.
+  4. Find the two UAT-PKT-01 descriptions and the recorded repayment entry and compare balances, summary and category totals with the recorded post-state.
 - **Expected results:** All three transactions and their allocations remain in history. Cash, card debt, Income, Expense, Dining and Groceries match UAT-PKT-01's post-state exactly. The same records are not duplicated by reload or sign-in.
 
 ## UAT-PKT-05: Record an opening balance on an unused Cash account
