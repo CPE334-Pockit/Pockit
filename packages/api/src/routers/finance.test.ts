@@ -310,7 +310,7 @@ describe("Sprint 1 financial API", () => {
     ).toBe(transactionsBefore);
     await expectRejectedWithCode(
       api.finance.accounts.setOpeningBalance({
-        accountId: accounts.card,
+        accountId: accounts.salary,
         amount: "1.00",
       }),
       "BAD_REQUEST",
@@ -794,5 +794,325 @@ describe("Sprint 1 financial API", () => {
         ],
       }),
     ).rejects.toMatchObject({ code: "FORBIDDEN" });
+  });
+});
+
+describe("FEAT-09 account lifecycle", () => {
+  const accountTypes = [
+    "CASH",
+    "LOAN_GIVEN",
+    "LOAN_TAKEN",
+    "INCOME",
+    "EXPENSE",
+  ] as const;
+
+  it("F09-STS-01 persists all five types, duplicate names, and renames only the selected Account", async () => {
+    const api = caller(ids.userB).finance.accounts;
+    const created = await Promise.all(
+      accountTypes.map((type) =>
+        api.create({ name: "  Same account  ", type }),
+      ),
+    );
+    expect(new Set(created.map(({ id }) => id)).size).toBe(5);
+    expect(created.map(({ type }) => type)).toEqual([...accountTypes]);
+    for (const account of created) {
+      expect(account).toMatchObject({
+        name: "Same account",
+        currencyCode: "THB",
+        openingBalance: null,
+      });
+      expect(await api.get({ accountId: account.id })).toEqual(account);
+    }
+    const [first, second] = created;
+    if (!first || !second) throw new Error("Expected two created accounts");
+    expect(
+      await api.rename({ accountId: first.id, name: " Revised " }),
+    ).toEqual({
+      id: first.id,
+      name: "Revised",
+    });
+    expect(await api.list()).toEqual(
+      expect.arrayContaining([{ ...first, name: "Revised" }, second]),
+    );
+    expect(
+      await db.financialAccount.findUnique({ where: { id: first.id } }),
+    ).toMatchObject({
+      ownerId: ids.userB,
+      name: "Revised",
+      type: "CASH",
+    });
+  });
+
+  it("F09-STS-02 deletes unused Accounts and preserves opening positions and posted references", async () => {
+    const finance = caller(ids.userB).finance;
+    await expectRejectedWithCode(
+      finance.accounts.create({ name: "  ", type: "CASH" }),
+      "BAD_REQUEST",
+    );
+    await expectRejectedWithCode(
+      finance.accounts.create({ name: "Crypto", type: "CRYPTO" as "CASH" }),
+      "BAD_REQUEST",
+    );
+    const unused = await finance.accounts.create({
+      name: "Delete me",
+      type: "INCOME",
+    });
+    expect(await finance.accounts.delete({ accountId: unused.id })).toEqual({
+      id: unused.id,
+    });
+    await expectRejectedWithCode(
+      finance.accounts.get({ accountId: unused.id }),
+      "NOT_FOUND",
+    );
+    const cash = await finance.accounts.create({
+      name: "Opening only",
+      type: "CASH",
+      openingBalance: "1",
+    });
+    const card = await finance.accounts.create({
+      name: "Card to retain",
+      type: "LOAN_TAKEN",
+    });
+    const expense = await finance.accounts.create({
+      name: "Expense to retain",
+      type: "EXPENSE",
+    });
+    const posting = await finance.transactions.create({
+      form: "PAYMENT_CHARGE",
+      sourceAccountId: card.id,
+      totalAmount: "1.00",
+      transactionDate: "2026-11-26",
+      allocations: [{ kind: "EXPENSE", accountId: expense.id, amount: "1.00" }],
+    });
+    for (const { id } of [cash, card, expense]) {
+      await expectRejectedWithCode(
+        finance.accounts.delete({ accountId: id }),
+        "CONFLICT",
+      );
+      expect((await finance.accounts.get({ accountId: id })).id).toBe(id);
+    }
+    await expectRejectedWithCode(
+      finance.accounts.setOpeningBalance({
+        accountId: card.id,
+        amount: "2.00",
+      }),
+      "BAD_REQUEST",
+    );
+    await finance.accounts.rename({
+      accountId: expense.id,
+      name: "Renamed expense",
+    });
+    expect(await finance.transactions.history()).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: posting.id,
+          sourceAccountId: card.id,
+          allocations: [
+            expect.objectContaining({
+              accountId: expense.id,
+              accountName: "Renamed expense",
+              amount: "1.00",
+            }),
+          ],
+        }),
+      ]),
+    );
+  });
+
+  it("F09-STS-03 records an exact opening position for an existing loan without changing the summary totals", async () => {
+    const api = caller(ids.userB);
+    const loan = await db.financialAccount.create({
+      data: { ownerId: ids.userB, name: "Loan fixture", type: "LOAN_GIVEN" },
+    });
+    const before = await api.finance.summary.get();
+    const historyBefore = await api.finance.transactions.history();
+    const opened = await api.finance.accounts.setOpeningBalance({
+      accountId: loan.id,
+      amount: "100.25",
+    });
+
+    expect(opened).toMatchObject({
+      openingBalance: "100.25",
+      balance: "100.25",
+    });
+    expect(await api.finance.accounts.get({ accountId: loan.id })).toEqual(
+      opened,
+    );
+    const after = await api.finance.summary.get();
+    expect(after.incomeTotal).toBe(before.incomeTotal);
+    expect(after.expenseTotal).toBe(before.expenseTotal);
+    expect(await api.finance.transactions.history()).toEqual(historyBefore);
+  });
+
+  it("F09-STS-03/04 applies opening positions on creation and rejects invalid baselines atomically", async () => {
+    const finance = caller(ids.userB).finance;
+    const before = await finance.summary.get();
+    const history = await finance.transactions.history();
+    for (const [type, amount] of [
+      ["CASH", "0.01"],
+      ["LOAN_GIVEN", "100.25"],
+      ["LOAN_TAKEN", "75.10"],
+    ] as const) {
+      const account = await finance.accounts.create({
+        name: type,
+        type,
+        openingBalance: amount,
+      });
+      expect(
+        await finance.accounts.get({ accountId: account.id }),
+      ).toMatchObject({
+        openingBalance: amount,
+        balance: amount,
+      });
+      await expectRejectedWithCode(
+        finance.accounts.setOpeningBalance({
+          accountId: account.id,
+          amount: "9.00",
+        }),
+        "BAD_REQUEST",
+      );
+    }
+    const noOpening = await finance.accounts.create({
+      name: "No starting debt",
+      type: "LOAN_TAKEN",
+    });
+    expect(noOpening).toMatchObject({ openingBalance: null, balance: "0.00" });
+    for (const [type, amount] of [
+      ["INCOME", "1.00"],
+      ["EXPENSE", "1.00"],
+      ["CASH", "0.00"],
+      ["CASH", "-1.00"],
+      ["CASH", "1.001"],
+    ] as const) {
+      await expectRejectedWithCode(
+        finance.accounts.create({
+          name: "Invalid opening",
+          type,
+          openingBalance: amount,
+        }),
+        "BAD_REQUEST",
+      );
+    }
+    expect(
+      (await finance.accounts.list()).some(
+        ({ name }) => name === "Invalid opening",
+      ),
+    ).toBe(false);
+    const after = await finance.summary.get();
+    expect(after.incomeTotal).toBe(before.incomeTotal);
+    expect(after.expenseTotal).toBe(before.expenseTotal);
+    expect(await finance.transactions.history()).toEqual(history);
+  });
+
+  it("F09-STS-05 rejects unauthenticated, Administrator, and cross-owner writes", async () => {
+    const owner = caller(ids.userB).finance.accounts;
+    const anonymous = appRouter.createCaller({ db, session: null }).finance
+      .accounts;
+    const admin = administratorCaller().finance.accounts;
+    const other = userCaller().finance.accounts;
+    const account = await owner.create({
+      name: "Private lifecycle",
+      type: "LOAN_GIVEN",
+    });
+    const input = { accountId: account.id };
+    for (const [api, code] of [
+      [anonymous, "UNAUTHORIZED"],
+      [admin, "FORBIDDEN"],
+    ] as const) {
+      await expectRejectedWithCode(
+        api.create({ name: "Disallowed", type: "CASH" }),
+        code,
+      );
+      await expectRejectedWithCode(
+        api.rename({ ...input, name: "Disallowed" }),
+        code,
+      );
+      await expectRejectedWithCode(api.delete(input), code);
+      await expectRejectedWithCode(
+        api.setOpeningBalance({ ...input, amount: "1" }),
+        code,
+      );
+    }
+    await expectRejectedWithCode(
+      other.rename({ ...input, name: "Disallowed" }),
+      "NOT_FOUND",
+    );
+    await expectRejectedWithCode(other.delete(input), "NOT_FOUND");
+    await expectRejectedWithCode(
+      other.setOpeningBalance({ ...input, amount: "1" }),
+      "NOT_FOUND",
+    );
+    expect((await other.list()).some(({ id }) => id === account.id)).toBe(
+      false,
+    );
+    expect(await owner.get(input)).toEqual(account);
+  });
+
+  it("F09-STS-06 permits one opening write and preserves any concurrently posted references", async () => {
+    const finance = caller(ids.userB).finance;
+    const loan = await finance.accounts.create({
+      name: "Concurrent opening",
+      type: "LOAN_TAKEN",
+    });
+    const opening = await Promise.allSettled([
+      finance.accounts.setOpeningBalance({
+        accountId: loan.id,
+        amount: "1.00",
+      }),
+      finance.accounts.setOpeningBalance({
+        accountId: loan.id,
+        amount: "2.00",
+      }),
+    ]);
+    const [written] = opening.filter((result) => result.status === "fulfilled");
+    expect(
+      opening.filter((result) => result.status === "fulfilled"),
+    ).toHaveLength(1);
+    expect(await finance.accounts.get({ accountId: loan.id })).toEqual(
+      written?.value,
+    );
+
+    const card = await finance.accounts.create({
+      name: "Concurrent charge",
+      type: "LOAN_TAKEN",
+    });
+    const expense = await finance.accounts.create({
+      name: "Concurrent deletion",
+      type: "EXPENSE",
+    });
+    const [deletion, charge] = await Promise.allSettled([
+      finance.accounts.delete({ accountId: expense.id }),
+      finance.transactions.create({
+        form: "PAYMENT_CHARGE",
+        sourceAccountId: card.id,
+        totalAmount: "1.00",
+        transactionDate: "2026-11-26",
+        allocations: [
+          { kind: "EXPENSE", accountId: expense.id, amount: "1.00" },
+        ],
+      }),
+    ]);
+    expect([deletion.status, charge.status].sort()).toEqual([
+      "fulfilled",
+      "rejected",
+    ]);
+    if (charge.status === "fulfilled") {
+      expect(
+        await finance.accounts.get({ accountId: expense.id }),
+      ).toMatchObject({ categoryTotal: "1.00" });
+      expect(
+        (await finance.transactions.history()).some(
+          ({ id }) => id === charge.value.id,
+        ),
+      ).toBe(true);
+    } else {
+      await expectRejectedWithCode(
+        finance.accounts.get({ accountId: expense.id }),
+        "NOT_FOUND",
+      );
+      expect(await finance.accounts.get({ accountId: card.id })).toMatchObject({
+        balance: "0.00",
+      });
+    }
   });
 });
