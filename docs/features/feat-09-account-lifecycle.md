@@ -2,23 +2,23 @@
 
 - Issue [#84](https://github.com/CPE334-Pockit/Pockit/issues/84), Sprint 2 [#82](https://github.com/CPE334-Pockit/Pockit/issues/82)
 - Branch `feature/account-lifecycle` from `staging-2` at `4992836eb4d8560bc00026f6386f59670b0871ba`. PR target `staging-2`.
-- Status: proposed for teammate review. The lifecycle policy below needs a recorded decision before implementation.
+- Status: implemented on the issue branch and awaiting integration review. The contract merged in [PR #94](https://github.com/CPE334-Pockit/Pockit/pull/94) at `0012012`. The product owner directed implementation to continue using those rules on 26 November 2026.
 - References: [SRS](../requirements/srs.md), [feature inventory](../requirements/feature-inventory.md), [System-Level SDS](../architecture/system-level-sds.md), [Sprint 1 contract](sprint1-feature-contracts.md), [money and date policy](../adr/0001-sprint1-money-and-date-policies.md).
 
 ## Feature-Level SDS
 
 FR-04 and BR-01 cover creating and managing the five Account types. BR-05 and BR-06 govern the starting position and classification. FR-02, BR-08, NFR-01, NFR-02, NFR-04 and NFR-05 apply to ownership, persistence, exact money and synthetic evidence. The feature depends on the Sprint 1 session, Account model and persisted reads. FEAT-10 consumes the Accounts created here.
 
-### Proposed lifecycle policy
+### Lifecycle policy
 
 - Users may create and rename Cash, Loan Given, Loan Taken, Income and Expense Accounts. Trim the name and require at least one non-whitespace character. Account type, owner and THB currency are fixed once created. Allow duplicate names within an owner and distinguish Accounts by ID.
-- Propose deleting only unused Accounts. An Account with a recorded opening balance or a reference as a transaction source or allocation target is retained to preserve history. Archiving, changing types and retroactively correcting a starting position require a separate scope decision.
+- Users may delete only unused Accounts. An Account with a recorded opening balance or a reference as a transaction source or allocation target is retained to preserve history. Archiving, changing types and retroactively correcting a starting position require a separate scope decision.
 - For Cash, Loan Given and Loan Taken, a User may set an optional opening position on creation or set it once before the first posting. Cash and Loan Given are positive assets and Loan Taken is positive debt. Reuse the Sprint 1 positive THB validation with up to two fractional digits. An absent position reads as a zero balance with a null opening balance. Income and Expense use category totals and reject opening amounts.
 - Renaming preserves IDs and ledger calculations. Views that resolve present Account names show the new name. Posted Transaction corrections and new allocation operations are outside this feature.
 
 ### UI, API and data specifications
 
-| Layer | Proposed behavior |
+| Layer | Behavior |
 | --- | --- |
 | UI | Add a create form and rename/delete actions to Accounts. Show type on creation and the opening amount only for eligible types. Include Loan Given and Loan Taken in the existing one-time opening balance entry flow when eligible. Confirm delete and show rejection inline. Refresh account and summary reads after a successful mutation. Keep controls keyboard accessible with labels and pending states. |
 | API | Add User-only `finance.accounts.create({ name, type, openingBalance? })`, `rename({ accountId, name })` and `delete({ accountId })`. Return the new Account on create, Account ID and name on rename, and Account ID on delete. Extend existing `setOpeningBalance` without changing its input or response. Keep existing list/get response shapes and derive ownership from the authenticated session. |
@@ -45,7 +45,20 @@ Use synthetic fixtures with two enabled Users and an Administrator. Compare stor
 | F09-STS-07 | AC-F09-01, AC-F09-02 | UI: add a Cash Account with an opening position, rename it, refresh, exercise a rejected action and delete an unused category with keyboard controls | Correct persisted display, reachable controls, visible rejection and current data after a successful action. |
 | F09-STS-08 | AC-F09-01, AC-F09-02 | Regression: Sprint 1 opening bank balance, salary, split card purchase, repayment, balance/summary/history and authorization checks | Original journey and financial isolation still work on the integration commit. |
 
-Planned seams are the finance router tests, PostgreSQL persistence tests and Accounts UI tests. All test IDs above are planned. Actual file/test names, commands, results and tested versions will be recorded here or in the linked execution record.
+### Execution evidence
+
+Local verification used Bun 1.3.9 and a temporary PostgreSQL 17 database. The checked-in migrations were applied with `bun run db:migrate:deploy`. The workflow continues to use the repository's pinned Bun version.
+
+| Revision | Command | Observed result |
+| --- | --- | --- |
+| `9bf1fe5` | `bun test packages/api/src/routers/finance.test.ts -t 'records an exact opening position'` with disposable `DATABASE_URL` and `NODE_ENV=test` | RED: 0 pass, 1 fail, 13 filtered out. F09-STS-03 reached the API and failed with `BAD_REQUEST: An opening balance can only be set for a Cash Account`. |
+| `7004335` | `bun run test` with the same database and `NODE_ENV=test` | GREEN: 67 pass, 0 fail, 0 skipped. Web 16, server 22, API 27, database 2. F09-STS-03 passed with persisted `100.25` on the Loan Given Account. |
+| `7004335` | `bun run check-types` and `bun run build` | Both passed. Targeted Biome check on all eight changed TypeScript files and `git diff origin/staging-2...HEAD --check` also passed. |
+
+| Acceptance criterion | Executed verification | Result |
+| --- | --- | --- |
+| AC-F09-01 | F09-STS-01, -02, -06 in [finance.test.ts](../../packages/api/src/routers/finance.test.ts); F09-STS-07 in [account-management.test.tsx](../../apps/web/src/components/account-management.test.tsx); F09-STS-08 continuity in [finance-persistence.test.ts](../../apps/server/src/finance-persistence.test.ts) | Passed on the implementation commit. Component tests simulated refreshed account data. Live browser keyboard and refresh verification and staging acceptance remain open. |
+| AC-F09-02 | F09-STS-03 through -06 in [finance.test.ts](../../packages/api/src/routers/finance.test.ts); F09-STS-07 in [finance-dashboard.test.tsx](../../apps/web/src/components/finance-dashboard.test.tsx); F09-STS-08 access and ledger continuity in the finance API and server suites | Passed on the implementation commit. CI, reviewed integration and release evidence are pending. |
 
 ## Definition of Done and evidence
 
