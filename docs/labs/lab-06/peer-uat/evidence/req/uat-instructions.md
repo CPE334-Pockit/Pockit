@@ -1,6 +1,8 @@
 # PocketLedger Sprint 1 — UAT instructions for the testing team
 
-**Status: prepared 23 November 2026; no case has been executed.** The expected results were checked against the application source code and the Sprint 1 contract; they have **not** yet been confirmed by a live walk-through (see the Product Team checklist in `product-team-handoff-checklist.md`). Fields marked **TBC** are filled in by the Product Team at handoff and must not be left blank when the pack is sent. Do not put credentials, tokens or other secret values in this file or in Git. They are delivered privately.
+**Status: prepared 23 November 2026; no case had been executed when this pack was prepared.** The expected results were checked against the application source code and the Sprint 1 contract; they had **not** yet been confirmed by a live walk-through. Do not put credentials, tokens or other secret values in this file or in Git.
+
+**Scope update, 27 November 2026:** The partner's revised UAT scope excludes UAT-04 and UAT-05 from the required run. This copy preserves the original handoff and case definitions for traceability. Earlier partial observations are not passes.
 
 This document is the executable UAT plan for Lab 6 Part A. A tester should be able to run every case from this document alone, without verbal explanation. Execution results, defect reports and the final decision are recorded in the tester's own PDF/record, using the templates in sections 3, 6 and 8. The Product Team's PDF embeds sections 1 to 6 and 8 (cases, handoff and templates) with an evidence-ID index, rather than only linking to this file.
 
