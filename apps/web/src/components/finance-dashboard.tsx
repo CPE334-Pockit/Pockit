@@ -347,7 +347,14 @@ export function FinanceDashboard({
       .filter((account) => account.type === "LOAN_TAKEN")
       .map((account) => account.balance),
   );
+  const selectedPurchaseCategories = purchaseAllocations
+    .map(({ accountId }) => accountId)
+    .filter(Boolean);
+  const hasDuplicatePurchaseCategory =
+    new Set(selectedPurchaseCategories).size !==
+    selectedPurchaseCategories.length;
   const canPostPurchase =
+    !hasDuplicatePurchaseCategory &&
     allocationsMatch(purchaseAmount, purchaseAllocations) &&
     purchaseAllocations.length > 0 &&
     purchaseAllocations.every(({ accountId }) =>
@@ -705,6 +712,7 @@ export function FinanceDashboard({
                     className="border-border/70 grid gap-4 border-t pt-5"
                     onSubmit={(event) => {
                       event.preventDefault();
+                      if (!canPostPurchase) return;
                       void submit(
                         onCreateTransaction({
                           form: "PAYMENT_CHARGE",
@@ -777,6 +785,11 @@ export function FinanceDashboard({
                           / {formatMoney(purchaseAmount || "0.00")}
                         </span>
                       </div>
+                      {hasDuplicatePurchaseCategory && (
+                        <p role="alert" className="text-destructive text-sm">
+                          Use each expense category only once.
+                        </p>
+                      )}
                       {purchaseAllocations.map((allocation, index) => (
                         <div
                           key={allocation.id}
