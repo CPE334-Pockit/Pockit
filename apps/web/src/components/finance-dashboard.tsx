@@ -24,6 +24,12 @@ import {
 } from "lucide-react";
 import { type ReactNode, useState } from "react";
 
+import {
+  type AccountActions,
+  AccountManagement,
+  supportsOpeningBalance,
+} from "./account-management";
+
 type Outputs = inferRouterOutputs<AppRouter>;
 type Inputs = inferRouterInputs<AppRouter>;
 type Account = Outputs["finance"]["accounts"]["list"][number];
@@ -40,6 +46,7 @@ type FinanceDashboardProps = {
   accounts: Account[];
   transactions: Transaction[];
   summary: Summary;
+  accountActions: AccountActions;
   openingBalancePending?: boolean;
   transactionPending?: boolean;
   onSetOpeningBalance: (input: OpeningBalanceInput) => Promise<void>;
@@ -49,7 +56,7 @@ type FinanceDashboardProps = {
 const actionDetails: Record<Action, { label: string; hint: string }> = {
   opening: {
     label: "Starting balance",
-    hint: "Set your bank's opening position.",
+    hint: "Set an account’s opening position.",
   },
   income: {
     label: "Income received",
@@ -129,6 +136,10 @@ function Field({
   );
 }
 
+function activeAccountId(accounts: Account[], selected: string) {
+  return accounts.some(({ id }) => id === selected) ? selected : "";
+}
+
 function SelectField({
   id,
   label,
@@ -142,24 +153,33 @@ function SelectField({
   label: string;
   value: string;
   onChange: (value: string) => void;
-  options: { id: string; name: string }[];
+  options: Account[];
   placeholder: string;
   disabled?: boolean;
 }) {
+  const selected = options.some(({ id }) => id === value) ? value : "";
+  const seenNames = new Set<string>();
+  const duplicateNames = new Set<string>();
+  for (const { name } of options) {
+    if (seenNames.has(name)) duplicateNames.add(name);
+    seenNames.add(name);
+  }
   return (
     <Field id={id} label={label}>
       <select
         id={id}
-        value={value}
+        value={selected}
         onChange={(event) => onChange(event.target.value)}
         disabled={disabled || options.length === 0}
         required
         className="border-input bg-background focus-visible:border-ring focus-visible:ring-ring/50 h-9 w-full border px-3 text-sm transition-colors outline-none focus-visible:ring-1 disabled:cursor-not-allowed disabled:opacity-50"
       >
-        {!value && <option value="">{placeholder}</option>}
+        {!selected && <option value="">{placeholder}</option>}
         {options.map((option) => (
           <option key={option.id} value={option.id}>
-            {option.name}
+            {duplicateNames.has(option.name)
+              ? `${option.name} · ${formatMoney(option.balance ?? option.categoryTotal)} · ${option.id}`
+              : option.name}
           </option>
         ))}
       </select>
@@ -280,6 +300,7 @@ export function FinanceDashboard({
   accounts,
   transactions,
   summary,
+  accountActions,
   openingBalancePending = false,
   transactionPending = false,
   onSetOpeningBalance,
@@ -295,24 +316,39 @@ export function FinanceDashboard({
   const expenseAccounts = accounts.filter(
     (account) => account.type === "EXPENSE",
   );
-  const accountsNeedingOpeningBalance = cashAccounts.filter(
-    (account) => account.openingBalance === null,
+  const postedAccountIds = new Set(
+    transactions.flatMap(({ sourceAccountId, allocations }) => [
+      sourceAccountId,
+      ...allocations.map(({ accountId }) => accountId),
+    ]),
+  );
+  const accountsNeedingOpeningBalance = accounts.filter(
+    (account) =>
+      supportsOpeningBalance(account.type) &&
+      account.openingBalance === null &&
+      !postedAccountIds.has(account.id),
   );
   const [activeAction, setActiveAction] = useState<Action>(() =>
     accountsNeedingOpeningBalance.length > 0 ? "opening" : "income",
   );
-  const [openingAccountId, setOpeningAccountId] = useState(
+  const [openingSelection, setOpeningAccountId] = useState(
     accountsNeedingOpeningBalance[0]?.id ?? "",
   );
+  const openingAccountId = activeAccountId(
+    accountsNeedingOpeningBalance,
+    openingSelection,
+  );
   const [openingAmount, setOpeningAmount] = useState("");
-  const [incomeCashId, setIncomeCashId] = useState(cashAccounts[0]?.id ?? "");
-  const [incomeCategoryId, setIncomeCategoryId] = useState(
+  const [incomeCashSelection, setIncomeCashId] = useState(
+    cashAccounts[0]?.id ?? "",
+  );
+  const [incomeCategorySelection, setIncomeCategoryId] = useState(
     incomeAccounts[0]?.id ?? "",
   );
   const [incomeAmount, setIncomeAmount] = useState("");
   const [incomeDate, setIncomeDate] = useState("");
   const [incomeDescription, setIncomeDescription] = useState("Salary");
-  const [purchaseCardId, setPurchaseCardId] = useState(
+  const [purchaseCardSelection, setPurchaseCardId] = useState(
     loanAccounts[0]?.id ?? "",
   );
   const [purchaseAmount, setPurchaseAmount] = useState("");
@@ -327,15 +363,23 @@ export function FinanceDashboard({
       amount: "",
     })),
   );
-  const [repaymentCashId, setRepaymentCashId] = useState(
+  const [repaymentCashSelection, setRepaymentCashId] = useState(
     cashAccounts[0]?.id ?? "",
   );
-  const [repaymentCardId, setRepaymentCardId] = useState(
+  const [repaymentCardSelection, setRepaymentCardId] = useState(
     loanAccounts[0]?.id ?? "",
   );
   const [repaymentAmount, setRepaymentAmount] = useState("");
   const [repaymentDate, setRepaymentDate] = useState("");
 
+  const incomeCashId = activeAccountId(cashAccounts, incomeCashSelection);
+  const incomeCategoryId = activeAccountId(
+    incomeAccounts,
+    incomeCategorySelection,
+  );
+  const purchaseCardId = activeAccountId(loanAccounts, purchaseCardSelection);
+  const repaymentCashId = activeAccountId(cashAccounts, repaymentCashSelection);
+  const repaymentCardId = activeAccountId(loanAccounts, repaymentCardSelection);
   const isBusy = openingBalancePending || transactionPending;
   const cashTotal = totalMoney(
     summary.balances
@@ -555,21 +599,21 @@ export function FinanceDashboard({
                           Start with the right baseline
                         </h2>
                         <p className="text-muted-foreground mt-1 text-xs leading-relaxed">
-                          This opening balance sets your starting Cash position;
-                          it is not counted as income.
+                          Record a starting Cash balance, amount owed to you, or
+                          debt. This does not affect income or expenses.
                         </p>
                       </div>
                     </div>
                     {accountsNeedingOpeningBalance.length === 0 ? (
                       <div className="flex items-center gap-2 border border-emerald-500/30 bg-emerald-500/5 p-3 text-sm text-emerald-300">
                         <Check aria-hidden="true" className="size-4" />
-                        Your opening balance is recorded.
+                        No accounts are eligible for an opening balance.
                       </div>
                     ) : (
                       <div className="grid gap-4 sm:grid-cols-2">
                         <SelectField
                           id="opening-account"
-                          label="Cash account"
+                          label="Account"
                           value={openingAccountId}
                           onChange={setOpeningAccountId}
                           options={accountsNeedingOpeningBalance}
@@ -1067,56 +1111,7 @@ export function FinanceDashboard({
           </section>
 
           <section className="grid gap-5 lg:grid-cols-[minmax(0,1.15fr)_minmax(18rem,0.85fr)]">
-            <Card className="border-border/80">
-              <CardHeader className="border-border/70 border-b pb-4">
-                <p className="text-primary text-[11px] font-semibold tracking-[0.18em] uppercase">
-                  Account map
-                </p>
-                <CardTitle className="mt-1 text-xl">
-                  Where your money lives
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="grid gap-4 pt-4 sm:grid-cols-2">
-                {accounts
-                  .filter(
-                    (account) =>
-                      account.type === "CASH" || account.type === "LOAN_TAKEN",
-                  )
-                  .map((account) => {
-                    const isCard = account.type === "LOAN_TAKEN";
-                    return (
-                      <div
-                        key={account.id}
-                        className="border-border/70 flex items-center gap-3 border p-3"
-                      >
-                        <span
-                          className={`grid size-9 shrink-0 place-items-center ${isCard ? "bg-amber-500/10 text-amber-400" : "bg-primary/10 text-primary"}`}
-                        >
-                          {isCard ? (
-                            <CreditCard aria-hidden="true" className="size-4" />
-                          ) : (
-                            <Wallet aria-hidden="true" className="size-4" />
-                          )}
-                        </span>
-                        <div className="min-w-0 flex-1">
-                          <p className="truncate text-sm font-medium">
-                            {account.name}
-                          </p>
-                          <p className="text-muted-foreground mt-0.5 text-xs">
-                            {isCard ? "Loan Taken" : "Cash"}
-                          </p>
-                        </div>
-                        <p className="shrink-0 text-sm font-semibold tabular-nums">
-                          {formatMoney(account.balance)}
-                          <span className="text-muted-foreground ml-1 text-[10px] font-normal">
-                            THB
-                          </span>
-                        </p>
-                      </div>
-                    );
-                  })}
-              </CardContent>
-            </Card>
+            <AccountManagement accounts={accounts} actions={accountActions} />
             <Card className="border-border/80">
               <CardHeader className="border-border/70 border-b pb-4">
                 <p className="text-primary text-[11px] font-semibold tracking-[0.18em] uppercase">

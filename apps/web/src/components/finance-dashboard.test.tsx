@@ -103,17 +103,23 @@ const setOpeningBalance = mock(
   (_input: Inputs["finance"]["accounts"]["setOpeningBalance"]) =>
     Promise.resolve(),
 );
+const accountActions = {
+  create: mock(async () => {}),
+  rename: mock(async () => {}),
+  delete: mock(async () => {}),
+};
 const createTransaction = mock(
   (_input: Inputs["finance"]["transactions"]["create"]) => Promise.resolve(),
 );
 
-function renderDashboard() {
+function renderDashboard(displayedAccounts = accounts) {
   return render(
     <FinanceDashboard
       name="Demo User"
-      accounts={accounts}
+      accounts={displayedAccounts}
       transactions={noTransactions}
       summary={summary}
+      accountActions={accountActions}
       onSetOpeningBalance={setOpeningBalance}
       onCreateTransaction={createTransaction}
     />,
@@ -204,6 +210,7 @@ describe("finance dashboard", () => {
         accounts={displayedAccounts}
         transactions={displayedTransactions}
         summary={displayedSummary}
+        accountActions={accountActions}
         onSetOpeningBalance={setOpeningBalance}
         onCreateTransaction={createTransaction}
       />,
@@ -233,6 +240,26 @@ describe("finance dashboard", () => {
       expect(setOpeningBalance).toHaveBeenCalledWith({
         accountId: "cash-main",
         amount: "25000.50",
+      });
+    });
+  });
+
+  it("F09-STS-07 records an opening balance for an existing Loan Taken account", async () => {
+    setOpeningBalance.mockClear();
+    const view = renderDashboard();
+    fireEvent.change(view.getByRole("combobox", { name: "Account" }), {
+      target: { value: "card-main" },
+    });
+    fireEvent.input(view.getByLabelText("Opening balance"), {
+      target: { value: "75.10" },
+    });
+    fireEvent.click(
+      view.getByRole("button", { name: /save opening balance/i }),
+    );
+    await waitFor(() => {
+      expect(setOpeningBalance).toHaveBeenCalledWith({
+        accountId: "card-main",
+        amount: "75.10",
       });
     });
   });
@@ -296,6 +323,47 @@ describe("finance dashboard", () => {
           { kind: "INCOME", accountId: "income-salary", amount: "42000.00" },
         ],
       });
+    });
+  });
+
+  it("F09-STS-09 distinguishes two Cash accounts named Bank and posts to the selected account", async () => {
+    createTransaction.mockClear();
+    const firstBank: Account = {
+      id: "bank-first",
+      name: "Bank",
+      type: "CASH",
+      currencyCode: "THB",
+      openingBalance: "100.00",
+      balance: "100.00",
+      categoryTotal: null,
+    };
+    const otherBank = { ...firstBank, id: "bank-second", balance: "250.00" };
+    const view = renderDashboard([firstBank, otherBank, ...accounts]);
+    fireEvent.click(view.getByRole("button", { name: /income received/i }));
+
+    const picker = view.getByRole("combobox", { name: "Received into" });
+    const firstOption = view.getByRole("option", {
+      name: "Bank · ฿100.00 · bank-first",
+    });
+    const secondOption = view.getByRole("option", {
+      name: "Bank · ฿250.00 · bank-second",
+    });
+    expect(firstOption.getAttribute("value")).toBe(firstBank.id);
+    const selectedId = secondOption.getAttribute("value");
+    expect(selectedId).toBe(otherBank.id);
+    fireEvent.change(picker, { target: { value: selectedId } });
+    fireEvent.input(view.getByLabelText("Amount received"), {
+      target: { value: "15.00" },
+    });
+    fireEvent.input(view.getByLabelText("Transaction date"), {
+      target: { value: "2026-11-07" },
+    });
+    fireEvent.click(view.getByRole("button", { name: "Record income" }));
+
+    await waitFor(() => {
+      expect(createTransaction).toHaveBeenCalledWith(
+        expect.objectContaining({ sourceAccountId: otherBank.id }),
+      );
     });
   });
 

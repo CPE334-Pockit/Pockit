@@ -23,6 +23,15 @@ const allocationKinds = [
 
 const accountIdSchema = z.string().min(1);
 const accountLookupSchema = z.object({ accountId: accountIdSchema });
+const accountNameSchema = z.string().trim().min(1);
+const accountCreateSchema = z.object({
+  name: accountNameSchema,
+  type: z.enum(["CASH", "LOAN_GIVEN", "LOAN_TAKEN", "INCOME", "EXPENSE"]),
+  openingBalance: z.string().optional(),
+});
+const accountRenameSchema = accountLookupSchema.extend({
+  name: accountNameSchema,
+});
 const openingBalanceSchema = z.object({
   accountId: accountIdSchema,
   amount: z.string(),
@@ -85,12 +94,12 @@ function sumMinorUnits(values: string[]): bigint {
   return values.reduce((total, value) => total + BigInt(value), 0n);
 }
 
-function isSerializationConflict(error: unknown): boolean {
+function isFinancialWriteConflict(error: unknown): boolean {
   return (
     typeof error === "object" &&
     error !== null &&
     "code" in error &&
-    error.code === "P2034"
+    (error.code === "P2034" || error.code === "P2003")
   );
 }
 
@@ -103,7 +112,7 @@ async function serializable<T>(
       isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
     });
   } catch (error) {
-    if (isSerializationConflict(error)) {
+    if (isFinancialWriteConflict(error)) {
       throw new TRPCError({
         code: "CONFLICT",
         message: "A concurrent financial update occurred; retry the operation",
@@ -126,6 +135,27 @@ async function findOwnedAccount(
     return missingAccount();
   }
   return account;
+}
+
+function canHaveOpeningBalance(type: AccountRecord["type"]) {
+  return type === "CASH" || type === "LOAN_GIVEN" || type === "LOAN_TAKEN";
+}
+
+async function hasAccountActivity(
+  client: DataClient,
+  account: AccountRecord,
+): Promise<boolean> {
+  const [source, allocation] = await Promise.all([
+    client.financialTransaction.findFirst({
+      where: { ownerId: account.ownerId, sourceAccountId: account.id },
+      select: { id: true },
+    }),
+    client.allocationLine.findFirst({
+      where: { ownerId: account.ownerId, accountId: account.id },
+      select: { id: true },
+    }),
+  ]);
+  return source !== null || allocation !== null;
 }
 
 async function accountBalanceMinorUnits(
@@ -357,6 +387,66 @@ async function validateTransaction(
 
 export const financeRouter = router({
   accounts: router({
+    create: userProcedure
+      .input(accountCreateSchema)
+      .mutation(async ({ ctx, input }) => {
+        if (
+          input.openingBalance !== undefined &&
+          !canHaveOpeningBalance(input.type)
+        ) {
+          return badRequest("Category Accounts cannot have an opening balance");
+        }
+        const opening =
+          input.openingBalance === undefined
+            ? null
+            : amountInMinorUnits(input.openingBalance);
+        const account = await ctx.db.financialAccount.create({
+          data: {
+            ownerId: ctx.session.user.id,
+            name: input.name,
+            type: input.type,
+            openingBalanceMinorUnits: opening?.toString() ?? null,
+          },
+        });
+        return serializeAccount(account, opening ?? 0n);
+      }),
+    rename: userProcedure
+      .input(accountRenameSchema)
+      .mutation(async ({ ctx, input }) => {
+        const result = await ctx.db.financialAccount.updateMany({
+          where: { id: input.accountId, ownerId: ctx.session.user.id },
+          data: { name: input.name },
+        });
+        if (result.count === 0) {
+          return missingAccount();
+        }
+        return { id: input.accountId, name: input.name };
+      }),
+    delete: userProcedure
+      .input(accountLookupSchema)
+      .mutation(({ ctx, input }) =>
+        serializable(ctx.db, async (tx) => {
+          const account = await findOwnedAccount(
+            tx,
+            ctx.session.user.id,
+            input.accountId,
+          );
+          if (
+            account.openingBalanceMinorUnits !== null ||
+            (await hasAccountActivity(tx, account))
+          ) {
+            throw new TRPCError({
+              code: "CONFLICT",
+              message:
+                "An Account with an opening balance or activity cannot be deleted",
+            });
+          }
+          await tx.financialAccount.delete({
+            where: { id: account.id, ownerId: account.ownerId },
+          });
+          return { id: account.id };
+        }),
+      ),
     list: userProcedure.query(async ({ ctx }) =>
       ctx.db.$transaction(
         async (tx) => {
@@ -432,32 +522,21 @@ export const financeRouter = router({
             ctx.session.user.id,
             input.accountId,
           );
-          if (account.type !== "CASH") {
+          if (!canHaveOpeningBalance(account.type)) {
             return badRequest(
-              "An opening balance can only be set for a Cash Account",
+              "Category Accounts cannot have an opening balance",
             );
           }
           if (account.openingBalanceMinorUnits !== null) {
             return badRequest("The opening balance has already been recorded");
           }
-          const [sourceCount, allocationCount] = await Promise.all([
-            tx.financialTransaction.count({
-              where: {
-                ownerId: ctx.session.user.id,
-                sourceAccountId: account.id,
-              },
-            }),
-            tx.allocationLine.count({
-              where: { ownerId: ctx.session.user.id, accountId: account.id },
-            }),
-          ]);
-          if (sourceCount > 0 || allocationCount > 0) {
+          if (await hasAccountActivity(tx, account)) {
             return badRequest(
               "An opening balance cannot be changed after financial activity",
             );
           }
           const updated = await tx.financialAccount.update({
-            where: { id: account.id },
+            where: { id: account.id, ownerId: account.ownerId },
             data: { openingBalanceMinorUnits: amountMinorUnits.toString() },
           });
           return serializeAccount(updated, amountMinorUnits);

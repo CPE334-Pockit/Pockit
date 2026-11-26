@@ -13,6 +13,7 @@ for (const [name, value] of Object.entries({
   HTMLElement: dom.window.HTMLElement,
   Node: dom.window.Node,
   Event: dom.window.Event,
+  FormData: dom.window.FormData,
   MouseEvent: dom.window.MouseEvent,
   MutationObserver: dom.window.MutationObserver,
 })) {
