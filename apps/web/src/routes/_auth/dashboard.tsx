@@ -107,6 +107,15 @@ function UserFinanceOverview({
   });
 
   const refreshFinance = () => queryClient.invalidateQueries();
+  const createAccount = useMutation(
+    trpc.finance.accounts.create.mutationOptions({ onSuccess: refreshFinance }),
+  );
+  const renameAccount = useMutation(
+    trpc.finance.accounts.rename.mutationOptions({ onSuccess: refreshFinance }),
+  );
+  const deleteAccount = useMutation(
+    trpc.finance.accounts.delete.mutationOptions({ onSuccess: refreshFinance }),
+  );
   const openingBalance = useMutation(
     trpc.finance.accounts.setOpeningBalance.mutationOptions({
       onSuccess: async () => {
@@ -146,6 +155,11 @@ function UserFinanceOverview({
       accounts={accounts.data}
       transactions={history.data}
       summary={summary.data}
+      accountActions={{
+        create: createAccount.mutateAsync,
+        rename: renameAccount.mutateAsync,
+        delete: deleteAccount.mutateAsync,
+      }}
       openingBalancePending={openingBalance.isPending}
       transactionPending={transaction.isPending}
       onSetOpeningBalance={async (input) => {

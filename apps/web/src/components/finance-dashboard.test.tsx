@@ -103,6 +103,11 @@ const setOpeningBalance = mock(
   (_input: Inputs["finance"]["accounts"]["setOpeningBalance"]) =>
     Promise.resolve(),
 );
+const accountActions = {
+  create: mock(async () => {}),
+  rename: mock(async () => {}),
+  delete: mock(async () => {}),
+};
 const createTransaction = mock(
   (_input: Inputs["finance"]["transactions"]["create"]) => Promise.resolve(),
 );
@@ -114,6 +119,7 @@ function renderDashboard() {
       accounts={accounts}
       transactions={noTransactions}
       summary={summary}
+      accountActions={accountActions}
       onSetOpeningBalance={setOpeningBalance}
       onCreateTransaction={createTransaction}
     />,
@@ -204,6 +210,7 @@ describe("finance dashboard", () => {
         accounts={displayedAccounts}
         transactions={displayedTransactions}
         summary={displayedSummary}
+        accountActions={accountActions}
         onSetOpeningBalance={setOpeningBalance}
         onCreateTransaction={createTransaction}
       />,
@@ -233,6 +240,26 @@ describe("finance dashboard", () => {
       expect(setOpeningBalance).toHaveBeenCalledWith({
         accountId: "cash-main",
         amount: "25000.50",
+      });
+    });
+  });
+
+  it("F09-STS-07 records an opening balance for an existing Loan Taken account", async () => {
+    setOpeningBalance.mockClear();
+    const view = renderDashboard();
+    fireEvent.change(view.getByRole("combobox", { name: "Account" }), {
+      target: { value: "card-main" },
+    });
+    fireEvent.input(view.getByLabelText("Opening balance"), {
+      target: { value: "75.10" },
+    });
+    fireEvent.click(
+      view.getByRole("button", { name: /save opening balance/i }),
+    );
+    await waitFor(() => {
+      expect(setOpeningBalance).toHaveBeenCalledWith({
+        accountId: "card-main",
+        amount: "75.10",
       });
     });
   });

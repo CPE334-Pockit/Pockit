@@ -1064,12 +1064,14 @@ describe("FEAT-09 account lifecycle", () => {
         amount: "2.00",
       }),
     ]);
-    const [written] = opening.filter((result) => result.status === "fulfilled");
-    expect(
-      opening.filter((result) => result.status === "fulfilled"),
-    ).toHaveLength(1);
+    const successfulWrites = opening.filter(
+      (result) => result.status === "fulfilled",
+    );
+    expect(successfulWrites).toHaveLength(1);
+    const [written] = successfulWrites;
+    if (!written) throw new Error("Expected one recorded opening balance");
     expect(await finance.accounts.get({ accountId: loan.id })).toEqual(
-      written?.value,
+      written.value,
     );
 
     const card = await finance.accounts.create({
