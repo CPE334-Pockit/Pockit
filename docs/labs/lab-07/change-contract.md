@@ -6,7 +6,7 @@ Guntee reports that course staff said separate change approval can be skipped. T
 
 ## Baseline
 
-Sprint 1 tag `sprint1-v1.0.0` (`e99da77`); accepted Lab 6 deployment `b315c99b7e68ec4061bd131aff016bb19ed6c899`, revision `s4b043a2c-00005-qd5`. Contract base: `staging-2` at `4992836eb4d8560bc00026f6386f59670b0871ba`, which includes Lab 6 account provisioning and report changes. Confirm the actual pre-change commit and deployed version again before RED. In both inspected code revisions, the finance router deduplicates IDs for lookup but keeps the supplied allocation lines for persistence.
+Sprint 1 tag `sprint1-v1.0.0` (`e99da77`); accepted Lab 6 deployment `b315c99b7e68ec4061bd131aff016bb19ed6c899`, revision `s4b043a2c-00005-qd5`. Contract base: `lab7` (created from `main`) at `4992836eb4d8560bc00026f6386f59670b0871ba`, which includes Lab 6 account provisioning and report changes. Confirm the actual pre-change commit and deployed version again before RED. In both inspected code revisions, the finance router deduplicates IDs for lookup but keeps the supplied allocation lines for persistence.
 
 ## Contract revision
 
