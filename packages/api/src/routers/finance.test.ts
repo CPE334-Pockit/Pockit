@@ -173,6 +173,9 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
+  await db.financialTransactionCorrection.deleteMany({
+    where: { ownerId: { in: Object.values(ids) } },
+  });
   await db.financialTransaction.deleteMany({
     where: { ownerId: { in: Object.values(ids) } },
   });
@@ -1793,6 +1796,378 @@ describe("FEAT-11 history filters", () => {
     expect(results.map(({ id }) => id)).toEqual([posted.id]);
     expect(results[0]?.allocations).toEqual(
       expect.arrayContaining(posted.allocations),
+    );
+  });
+});
+
+describe("FEAT-12 posted transaction correction", () => {
+  const api = caller(ids.userB).finance;
+  const date = "2026-11-27";
+
+  it("F12-STS-02/03 replaces and voids without deleting the original or its audit history", async () => {
+    const initialExpenseTotal = (await api.summary.get()).expenseTotal;
+    const bank = await api.accounts.create({
+      name: "Correction bank",
+      type: "CASH",
+      openingBalance: "100.00",
+    });
+    const dining = await api.accounts.create({
+      name: "Correction dining",
+      type: "EXPENSE",
+    });
+    const groceries = await api.accounts.create({
+      name: "Correction groceries",
+      type: "EXPENSE",
+    });
+    const originalInput = {
+      form: "PAYMENT_CHARGE" as const,
+      sourceAccountId: bank.id,
+      totalAmount: "20.00",
+      transactionDate: date,
+      allocations: [
+        { kind: "EXPENSE" as const, accountId: dining.id, amount: "20.00" },
+      ],
+    };
+    const original = await api.transactions.create(originalInput);
+    const first = await api.transactions.correct({
+      action: "REPLACE",
+      transactionId: original.id,
+      reason: "Wrong category and amount",
+      replacement: {
+        ...originalInput,
+        totalAmount: "12.00",
+        allocations: [
+          { kind: "EXPENSE", accountId: groceries.id, amount: "12.00" },
+        ],
+      },
+    });
+    const reopenedDb = createPrismaClient({ DATABASE_URL: databaseUrl });
+    try {
+      const read = caller(ids.userB, "User", reopenedDb).finance;
+      expect(await read.accounts.get({ accountId: bank.id })).toMatchObject({
+        balance: "88.00",
+      });
+      expect(await read.accounts.get({ accountId: dining.id })).toMatchObject({
+        categoryTotal: "0.00",
+      });
+      expect(
+        await read.accounts.get({ accountId: groceries.id }),
+      ).toMatchObject({ categoryTotal: "12.00" });
+      expect(
+        BigInt((await read.summary.get()).expenseTotal.replace(".", "")) -
+          BigInt(initialExpenseTotal.replace(".", "")),
+      ).toBe(1200n);
+      if (!first.replacementId) throw new Error("Expected a replacement");
+      const active = await read.transactions.history({ accountId: bank.id });
+      expect(active.map(({ id }) => id)).toEqual([first.replacementId]);
+      const audits = await read.transactions.correctionHistory();
+      expect(audits).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            id: first.id,
+            action: "REPLACE",
+            reason: "Wrong category and amount",
+            actorId: ids.userB,
+            original,
+          }),
+        ]),
+      );
+      expect(await read.transactions.history({ accountId: dining.id })).toEqual(
+        [],
+      );
+      await api.transactions.correct({
+        action: "VOID",
+        transactionId: first.replacementId,
+        reason: "Duplicate receipt",
+      });
+      expect(await read.transactions.history({ accountId: bank.id })).toEqual(
+        [],
+      );
+      expect(await read.accounts.get({ accountId: bank.id })).toMatchObject({
+        balance: "100.00",
+      });
+      expect(
+        await read.accounts.get({ accountId: groceries.id }),
+      ).toMatchObject({ categoryTotal: "0.00" });
+      expect((await read.summary.get()).expenseTotal).toBe(initialExpenseTotal);
+      expect(
+        (await read.transactions.correctionHistory()).filter(
+          ({ original }) => original.sourceAccountId === bank.id,
+        ),
+      ).toHaveLength(2);
+    } finally {
+      await reopenedDb.$disconnect();
+    }
+  });
+
+  async function receiptFixture() {
+    const bank = await api.accounts.create({
+      name: "Correction receiving Cash",
+      type: "CASH",
+    });
+    const income = await api.accounts.create({
+      name: "Correction income",
+      type: "INCOME",
+    });
+    const paymentCategory = await api.accounts.create({
+      name: "Correction expense",
+      type: "EXPENSE",
+    });
+    const receipt = {
+      form: "RECEIVE_MONEY" as const,
+      sourceAccountId: bank.id,
+      totalAmount: "100.00",
+      transactionDate: date,
+      allocations: [
+        { kind: "INCOME" as const, accountId: income.id, amount: "100.00" },
+      ],
+    };
+    const spend = {
+      form: "PAYMENT_CHARGE" as const,
+      sourceAccountId: bank.id,
+      totalAmount: "80.00",
+      transactionDate: date,
+      allocations: [
+        {
+          kind: "EXPENSE" as const,
+          accountId: paymentCategory.id,
+          amount: "80.00",
+        },
+      ],
+    };
+    const posted = await api.transactions.create(receipt);
+    return { bank, receipt, spend, posted };
+  }
+
+  it("F12-STS-04 rejects negative Cash or receivables and permits a corrected balance of zero", async () => {
+    const { bank, receipt, spend, posted } = await receiptFixture();
+    await api.transactions.create(spend);
+    const before = await api.transactions.history({ accountId: bank.id });
+    const beforeSummary = await api.summary.get();
+    const beforeAudit = await api.transactions.correctionHistory();
+    const closed = {
+      transactionId: posted.id,
+      reason: "Correct original receipt",
+    };
+    await expectRejectedWithCode(
+      api.transactions.correct({ ...closed, action: "VOID" }),
+      "BAD_REQUEST",
+    );
+    for (const [totalAmount, amount] of [
+      ["79.99", "79.99"],
+      ["80.00", "79.99"],
+    ] as const) {
+      await expectRejectedWithCode(
+        api.transactions.correct({
+          ...closed,
+          action: "REPLACE",
+          replacement: {
+            ...receipt,
+            totalAmount,
+            allocations: receipt.allocations.map((line) => ({
+              ...line,
+              amount,
+            })),
+          },
+        }),
+        "BAD_REQUEST",
+      );
+    }
+    expect(await api.transactions.history({ accountId: bank.id })).toEqual(
+      before,
+    );
+    expect(await api.transactions.correctionHistory()).toEqual(beforeAudit);
+    expect(await api.summary.get()).toEqual(beforeSummary);
+    await api.transactions.correct({
+      ...closed,
+      action: "REPLACE",
+      replacement: {
+        ...receipt,
+        totalAmount: "80.00",
+        allocations: receipt.allocations.map((line) => ({
+          ...line,
+          amount: "80.00",
+        })),
+      },
+    });
+    expect(await api.accounts.get({ accountId: bank.id })).toMatchObject({
+      balance: "0.00",
+    });
+
+    const lendingCash = await api.accounts.create({
+      name: "Lending Cash",
+      type: "CASH",
+      openingBalance: "20.00",
+    });
+    const receivable = await api.accounts.create({
+      name: "Correction receivable",
+      type: "LOAN_GIVEN",
+    });
+    const lending = await api.transactions.create({
+      form: "PAYMENT_CHARGE",
+      sourceAccountId: lendingCash.id,
+      totalAmount: "10.00",
+      transactionDate: date,
+      allocations: [
+        {
+          kind: "LOAN_GIVEN_LENDING",
+          accountId: receivable.id,
+          amount: "10.00",
+        },
+      ],
+    });
+    await api.transactions.create({
+      form: "RECEIVE_MONEY",
+      sourceAccountId: lendingCash.id,
+      totalAmount: "10.00",
+      transactionDate: date,
+      allocations: [
+        {
+          kind: "LOAN_GIVEN_REPAYMENT",
+          accountId: receivable.id,
+          amount: "10.00",
+        },
+      ],
+    });
+    await expectRejectedWithCode(
+      api.transactions.correct({
+        action: "VOID",
+        transactionId: lending.id,
+        reason: "Blocked by repayment",
+      }),
+      "BAD_REQUEST",
+    );
+    expect(await api.accounts.get({ accountId: receivable.id })).toMatchObject({
+      balance: "0.00",
+    });
+    expect(
+      await api.transactions.history({ accountId: receivable.id }),
+    ).toHaveLength(2);
+  });
+
+  it("F12-STS-05 scopes original, new counterpart and correction history to the owner", async () => {
+    const { receipt, posted } = await receiptFixture();
+    const input = {
+      action: "VOID" as const,
+      transactionId: posted.id,
+      reason: "Synthetic correction",
+    };
+    const other = userCaller().finance;
+    const administrator = administratorCaller().finance;
+    const guest = appRouter.createCaller({ db, session: null }).finance;
+    const before = await api.transactions.correctionHistory();
+    await expectRejectedWithCode(
+      other.transactions.correct(input),
+      "NOT_FOUND",
+    );
+    await expectRejectedWithCode(
+      api.transactions.correct({
+        ...input,
+        transactionId: "missing-transaction",
+      }),
+      "NOT_FOUND",
+    );
+    await expectRejectedWithCode(
+      api.transactions.correct({ ...input, reason: "  " }),
+      "BAD_REQUEST",
+    );
+    await expectRejectedWithCode(
+      api.transactions.correct({
+        action: "REPLACE",
+        transactionId: posted.id,
+        reason: "Try foreign Account",
+        replacement: { ...receipt, sourceAccountId: accounts.bank },
+      }),
+      "BAD_REQUEST",
+    );
+    for (const [actor, code] of [
+      [administrator, "FORBIDDEN"],
+      [guest, "UNAUTHORIZED"],
+    ] as const) {
+      await expectRejectedWithCode(actor.transactions.correct(input), code);
+      await expectRejectedWithCode(
+        actor.transactions.correctionHistory(),
+        code,
+      );
+    }
+    expect(await api.transactions.correctionHistory()).toEqual(before);
+    await api.transactions.correct(input);
+    expect(
+      (await other.transactions.correctionHistory()).some(
+        ({ original }) => original.id === posted.id,
+      ),
+    ).toBe(false);
+  });
+
+  it("F12-STS-06 racing corrections or postings retain one consistent ledger", async () => {
+    const { bank, receipt, posted } = await receiptFixture();
+    const input = {
+      action: "REPLACE" as const,
+      transactionId: posted.id,
+      reason: "Two competing corrections",
+      replacement: receipt,
+    };
+    const corrected = await Promise.allSettled([
+      api.transactions.correct(input),
+      api.transactions.correct(input),
+    ]);
+    expect(corrected.map(({ status }) => status).sort()).toEqual([
+      "fulfilled",
+      "rejected",
+    ]);
+    const history = await api.transactions.history({ accountId: bank.id });
+    expect(history).toHaveLength(1);
+    expect(
+      await db.financialTransaction.count({
+        where: { ownerId: ids.userB, sourceAccountId: bank.id },
+      }),
+    ).toBe(2);
+    expect(
+      (await api.transactions.correctionHistory()).filter(
+        ({ original }) => original.id === posted.id,
+      ),
+    ).toHaveLength(1);
+
+    const race = await receiptFixture();
+    const [voided, spent] = await Promise.allSettled([
+      api.transactions.correct({
+        action: "VOID",
+        transactionId: race.posted.id,
+        reason: "Reverse receipt",
+      }),
+      api.transactions.create(race.spend),
+    ]);
+    expect([voided.status, spent.status].sort()).toEqual([
+      "fulfilled",
+      "rejected",
+    ]);
+    expect(await api.accounts.get({ accountId: race.bank.id })).toMatchObject({
+      balance: voided.status === "fulfilled" ? "0.00" : "20.00",
+    });
+  });
+
+  it("F12-STS-08 retains historical Account use after the only active posting is voided", async () => {
+    const { bank, posted } = await receiptFixture();
+    await api.transactions.correct({
+      action: "VOID",
+      transactionId: posted.id,
+      reason: "Duplicate income",
+    });
+    expect(await api.transactions.history({ accountId: bank.id })).toEqual([]);
+    expect(await api.accounts.get({ accountId: bank.id })).toMatchObject({
+      openingBalanceEligible: false,
+      balance: "0.00",
+    });
+    expect(
+      (await api.accounts.list()).find(({ id }) => id === bank.id),
+    ).toMatchObject({ openingBalanceEligible: false });
+    await expectRejectedWithCode(
+      api.accounts.setOpeningBalance({ accountId: bank.id, amount: "1.00" }),
+      "BAD_REQUEST",
+    );
+    await expectRejectedWithCode(
+      api.accounts.delete({ accountId: bank.id }),
+      "CONFLICT",
     );
   });
 });

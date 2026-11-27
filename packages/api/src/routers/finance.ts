@@ -57,6 +57,32 @@ const transactionSchema = z.object({
     .min(1),
 });
 
+const correctionSchema = z.discriminatedUnion("action", [
+  z.object({
+    action: z.literal("REPLACE"),
+    transactionId: z.string().min(1),
+    reason: z.string().trim().min(1),
+    replacement: transactionSchema,
+  }),
+  z
+    .object({
+      action: z.literal("VOID"),
+      transactionId: z.string().min(1),
+      reason: z.string().trim().min(1),
+    })
+    .strict(),
+]);
+
+const activeTransaction = {
+  correction: null,
+} satisfies Prisma.FinancialTransactionWhereInput;
+const allocationNames = {
+  allocations: { include: { account: { select: { name: true } } } },
+} as const;
+const accountActivityCounts = {
+  _count: { select: { sourceTransactions: true, allocationLines: true } },
+} as const;
+
 type AccountRecord = Awaited<
   ReturnType<Prisma.TransactionClient["financialAccount"]["findFirstOrThrow"]>
 >;
@@ -129,6 +155,7 @@ function historyWhere(
     });
   }
   return {
+    ...activeTransaction,
     ownerId,
     form,
     transactionDate: from || to ? { gte: from, lte: to } : undefined,
@@ -213,13 +240,18 @@ async function accountBalanceMinorUnits(
   if (account.type === "CASH") {
     const [transactions, transfers] = await Promise.all([
       client.financialTransaction.findMany({
-        where: { ownerId: account.ownerId, sourceAccountId: account.id },
+        where: {
+          ...activeTransaction,
+          ownerId: account.ownerId,
+          sourceAccountId: account.id,
+        },
         select: { form: true, totalMinorUnits: true },
       }),
       client.allocationLine.findMany({
         where: {
           ownerId: account.ownerId,
           accountId: account.id,
+          transaction: activeTransaction,
           kind: { in: ["TRANSFER_TO_CASH", "TRANSFER_FROM_CASH"] },
         },
         select: { kind: true, amountMinorUnits: true },
@@ -242,13 +274,18 @@ async function accountBalanceMinorUnits(
   if (account.type === "LOAN_TAKEN") {
     const [transactions, allocations] = await Promise.all([
       client.financialTransaction.findMany({
-        where: { ownerId: account.ownerId, sourceAccountId: account.id },
+        where: {
+          ...activeTransaction,
+          ownerId: account.ownerId,
+          sourceAccountId: account.id,
+        },
         select: { form: true, totalMinorUnits: true },
       }),
       client.allocationLine.findMany({
         where: {
           ownerId: account.ownerId,
           accountId: account.id,
+          transaction: activeTransaction,
           kind: { in: ["LOAN_TAKEN_REPAYMENT", "LOAN_TAKEN_BORROWING"] },
         },
         select: { kind: true, amountMinorUnits: true },
@@ -274,6 +311,7 @@ async function accountBalanceMinorUnits(
       where: {
         ownerId: account.ownerId,
         accountId: account.id,
+        transaction: activeTransaction,
         kind: { in: ["LOAN_GIVEN_LENDING", "LOAN_GIVEN_REPAYMENT"] },
       },
       select: { kind: true, amountMinorUnits: true },
@@ -296,14 +334,16 @@ async function categoryTotalMinorUnits(
   kind: "INCOME" | "EXPENSE",
 ): Promise<bigint> {
   const lines = await client.allocationLine.findMany({
-    where: { ownerId, accountId, kind },
+    where: { ownerId, accountId, kind, transaction: activeTransaction },
     select: { amountMinorUnits: true },
   });
   return sumMinorUnits(lines.map(({ amountMinorUnits }) => amountMinorUnits));
 }
 
 function serializeAccount(
-  account: NonNullable<AccountRecord>,
+  account: AccountRecord & {
+    _count?: { sourceTransactions: number; allocationLines: number };
+  },
   amount: bigint | null,
 ) {
   const isCategory = account.type === "INCOME" || account.type === "EXPENSE";
@@ -315,6 +355,11 @@ function serializeAccount(
     openingBalance: account.openingBalanceMinorUnits
       ? formatMinorUnits(BigInt(account.openingBalanceMinorUnits))
       : null,
+    openingBalanceEligible:
+      !isCategory &&
+      account.openingBalanceMinorUnits === null &&
+      (account._count?.sourceTransactions ?? 0) === 0 &&
+      (account._count?.allocationLines ?? 0) === 0,
     balance: isCategory || amount === null ? null : formatMinorUnits(amount),
     categoryTotal:
       !isCategory || amount === null ? null : formatMinorUnits(amount),
@@ -439,7 +484,14 @@ async function validateTransaction(
     return badRequest("Use each expense category only once.");
   }
 
-  for (const { account, amount } of reductions.values()) {
+  return reductions;
+}
+
+async function requireAvailableFunds(
+  client: DataClient,
+  reductions: Iterable<{ account: AccountRecord; amount: bigint }>,
+) {
+  for (const { account, amount } of reductions) {
     if (amount > (await accountBalanceMinorUnits(client, account))) {
       return badRequest(
         account.type === "CASH"
@@ -450,7 +502,34 @@ async function validateTransaction(
       );
     }
   }
-  return source;
+}
+
+function createTransactionRecord(
+  client: DataClient,
+  ownerId: string,
+  input: z.infer<typeof transactionSchema>,
+  parsed: ReturnType<typeof parseTransactionInput>,
+) {
+  return client.financialTransaction.create({
+    data: {
+      ownerId,
+      form: input.form,
+      totalMinorUnits: parsed.totalMinorUnits.toString(),
+      transactionDate: parsed.date,
+      sourceAccountId: input.sourceAccountId,
+      description: input.description,
+      allocations: {
+        create: parsed.allocations.map((allocation) => ({
+          account: {
+            connect: { id_ownerId: { id: allocation.accountId, ownerId } },
+          },
+          kind: allocation.kind,
+          amountMinorUnits: allocation.amountMinorUnits.toString(),
+        })),
+      },
+    },
+    include: allocationNames,
+  });
 }
 
 export const financeRouter = router({
@@ -521,6 +600,7 @@ export const financeRouter = router({
           const ownerId = ctx.session.user.id;
           const accounts = await tx.financialAccount.findMany({
             where: { ownerId },
+            include: accountActivityCounts,
             orderBy: [{ type: "asc" }, { name: "asc" }],
           });
           return Promise.all(
@@ -555,6 +635,7 @@ export const financeRouter = router({
           async (tx) => {
             const account = await tx.financialAccount.findFirst({
               where: { id: input.accountId, ownerId: ctx.session.user.id },
+              include: accountActivityCounts,
             });
             if (!account) {
               return missingAccount();
@@ -618,38 +699,135 @@ export const financeRouter = router({
         const parsed = parseTransactionInput(input);
         return serializable(ctx.db, async (tx) => {
           const ownerId = ctx.session.user.id;
-          const source = await validateTransaction(tx, ownerId, input, parsed);
-          const { allocations, totalMinorUnits, date } = parsed;
-
-          const transaction = await tx.financialTransaction.create({
-            data: {
-              ownerId,
-              form: input.form,
-              totalMinorUnits: totalMinorUnits.toString(),
-              transactionDate: date,
-              sourceAccountId: source.id,
-              description: input.description,
-              allocations: {
-                create: allocations.map((allocation) => ({
-                  account: {
-                    connect: {
-                      id_ownerId: { id: allocation.accountId, ownerId },
-                    },
-                  },
-                  kind: allocation.kind,
-                  amountMinorUnits: allocation.amountMinorUnits.toString(),
-                })),
-              },
-            },
-            include: {
-              allocations: {
-                include: { account: { select: { name: true } } },
-              },
-            },
-          });
-          return serializeTransaction(transaction);
+          const reductions = await validateTransaction(
+            tx,
+            ownerId,
+            input,
+            parsed,
+          );
+          await requireAvailableFunds(tx, reductions.values());
+          return serializeTransaction(
+            await createTransactionRecord(tx, ownerId, input, parsed),
+          );
         });
       }),
+    correct: userProcedure.input(correctionSchema).mutation(({ ctx, input }) =>
+      serializable(ctx.db, async (tx) => {
+        const ownerId = ctx.session.user.id;
+        const original = await tx.financialTransaction.findFirst({
+          where: { id: input.transactionId, ownerId },
+          include: {
+            correction: { select: { id: true } },
+            allocations: { select: { accountId: true } },
+          },
+        });
+        if (!original) {
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "Transaction not found",
+          });
+        }
+        if (original.correction) {
+          throw new TRPCError({
+            code: "CONFLICT",
+            message: "This Transaction has already been corrected",
+          });
+        }
+
+        let replacementId: string | null = null;
+        const affectedIds = new Set([
+          original.sourceAccountId,
+          ...original.allocations.map(({ accountId }) => accountId),
+        ]);
+        if (input.action === "REPLACE") {
+          const parsed = parseTransactionInput(input.replacement);
+          try {
+            await validateTransaction(tx, ownerId, input.replacement, parsed);
+          } catch (error) {
+            if (error instanceof TRPCError && error.code === "NOT_FOUND") {
+              return badRequest("A replacement Account is unavailable");
+            }
+            throw error;
+          }
+          const replacement = await createTransactionRecord(
+            tx,
+            ownerId,
+            input.replacement,
+            parsed,
+          );
+          replacementId = replacement.id;
+          affectedIds.add(replacement.sourceAccountId);
+          for (const { accountId } of replacement.allocations) {
+            affectedIds.add(accountId);
+          }
+        }
+        let correction: { id: string; replacementId: string | null };
+        try {
+          correction = await tx.financialTransactionCorrection.create({
+            data: {
+              ownerId,
+              originalId: original.id,
+              replacementId,
+              action: input.action,
+              reason: input.reason,
+            },
+            select: { id: true, replacementId: true },
+          });
+        } catch (error) {
+          if (
+            typeof error === "object" &&
+            error !== null &&
+            "code" in error &&
+            error.code === "P2002"
+          ) {
+            throw new TRPCError({
+              code: "CONFLICT",
+              message: "This Transaction has already been corrected",
+              cause: error,
+            });
+          }
+          throw error;
+        }
+
+        // The projected ledger already contains both changes inside this transaction.
+        const affected = await tx.financialAccount.findMany({
+          where: {
+            ownerId,
+            id: { in: [...affectedIds] },
+            type: { in: ["CASH", "LOAN_GIVEN", "LOAN_TAKEN"] },
+          },
+        });
+        for (const account of affected) {
+          if ((await accountBalanceMinorUnits(tx, account)) < 0n) {
+            return badRequest(
+              "Correction would leave an Account with a negative balance",
+            );
+          }
+        }
+        return correction;
+      }),
+    ),
+    correctionHistory: userProcedure.query(async ({ ctx }) => {
+      const entries = await ctx.db.financialTransactionCorrection.findMany({
+        where: { ownerId: ctx.session.user.id },
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+        include: {
+          original: { include: allocationNames },
+          replacement: { include: allocationNames },
+        },
+      });
+      return entries.map((entry) => ({
+        id: entry.id,
+        actorId: entry.ownerId,
+        action: entry.action,
+        reason: entry.reason,
+        recordedAt: entry.createdAt.toISOString(),
+        original: serializeTransaction(entry.original),
+        replacement: entry.replacement
+          ? serializeTransaction(entry.replacement)
+          : null,
+      }));
+    }),
     history: userProcedure
       .input(historyFilterSchema)
       .query(async ({ ctx, input }) => {
@@ -660,11 +838,7 @@ export const financeRouter = router({
             { createdAt: "desc" },
             { id: "desc" },
           ],
-          include: {
-            allocations: {
-              include: { account: { select: { name: true } } },
-            },
-          },
+          include: allocationNames,
         });
         return transactions.map(serializeTransaction);
       }),
@@ -680,11 +854,19 @@ export const financeRouter = router({
           });
           const [incomeLines, expenseLines] = await Promise.all([
             tx.allocationLine.findMany({
-              where: { ownerId, kind: "INCOME" },
+              where: {
+                ownerId,
+                kind: "INCOME",
+                transaction: activeTransaction,
+              },
               select: { amountMinorUnits: true },
             }),
             tx.allocationLine.findMany({
-              where: { ownerId, kind: "EXPENSE" },
+              where: {
+                ownerId,
+                kind: "EXPENSE",
+                transaction: activeTransaction,
+              },
               select: { amountMinorUnits: true },
             }),
           ]);

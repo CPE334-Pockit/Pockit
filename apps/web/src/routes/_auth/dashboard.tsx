@@ -97,6 +97,7 @@ export function UserFinanceOverview({
   const trpc = useTRPC();
   const queryClient = useQueryClient();
   const [appliedHistory, setAppliedHistory] = useState<HistoryFilters>();
+  const [auditOpen, setAuditOpen] = useState(false);
   const accountsQuery = trpc.finance.accounts.list.queryOptions();
   const historyQuery = trpc.finance.transactions.history.queryOptions();
   const summaryQuery = trpc.finance.summary.get.queryOptions();
@@ -118,6 +119,13 @@ export function UserFinanceOverview({
   const summary = useQuery({
     ...summaryQuery,
     queryKey: userScopedQueryKey(summaryQuery.queryKey, userId),
+  });
+  const auditOptions =
+    trpc.finance.transactions.correctionHistory.queryOptions();
+  const audit = useQuery({
+    ...auditOptions,
+    queryKey: userScopedQueryKey(auditOptions.queryKey, userId),
+    enabled: auditOpen,
   });
 
   const refreshFinance = () => queryClient.invalidateQueries();
@@ -146,6 +154,14 @@ export function UserFinanceOverview({
         await refreshFinance();
       },
       onError: (error) => toast.error(error.message),
+    }),
+  );
+  const correction = useMutation(
+    trpc.finance.transactions.correct.mutationOptions({
+      onSuccess: async () => {
+        toast.success("Correction recorded");
+        await refreshFinance();
+      },
     }),
   );
 
@@ -177,6 +193,16 @@ export function UserFinanceOverview({
         pending: appliedHistory !== undefined && filteredHistory.isPending,
         error: appliedHistory ? filteredHistory.error?.message : undefined,
         retry: () => void filteredHistory.refetch(),
+      }}
+      correctionActions={{
+        correct: correction.mutateAsync,
+        pending: correction.isPending,
+        auditOpen,
+        toggleAudit: () => setAuditOpen((current) => !current),
+        audit: audit.data ?? [],
+        auditPending: audit.isPending,
+        auditError: audit.error?.message,
+        retryAudit: () => void audit.refetch(),
       }}
       summary={summary.data}
       accountActions={{

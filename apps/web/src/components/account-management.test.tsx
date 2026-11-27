@@ -8,6 +8,7 @@ const card = {
   type: "LOAN_TAKEN" as const,
   currencyCode: "THB",
   openingBalance: "20.00",
+  openingBalanceEligible: false,
   balance: "20.00",
   categoryTotal: null,
 };
@@ -18,6 +19,7 @@ const category = {
   type: "EXPENSE" as const,
   currencyCode: "THB",
   openingBalance: null,
+  openingBalanceEligible: false,
   balance: null,
   categoryTotal: "0.00",
 };

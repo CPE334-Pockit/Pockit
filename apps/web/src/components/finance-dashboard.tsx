@@ -28,13 +28,9 @@ import {
   ReceiptText,
   Wallet,
 } from "lucide-react";
-import { type ReactNode, useState } from "react";
+import { type ReactNode, useId, useState } from "react";
 
-import {
-  type AccountActions,
-  AccountManagement,
-  supportsOpeningBalance,
-} from "./account-management";
+import { type AccountActions, AccountManagement } from "./account-management";
 
 type Outputs = inferRouterOutputs<AppRouter>;
 type Inputs = inferRouterInputs<AppRouter>;
@@ -64,11 +60,30 @@ type Action =
   | "receipt";
 type AllocationDraft = { id: string; accountId: string; amount: string };
 
+type CorrectionInput = Inputs["finance"]["transactions"]["correct"];
+type CorrectionAudit =
+  Outputs["finance"]["transactions"]["correctionHistory"][number];
+type SelectedCorrection = {
+  action: CorrectionInput["action"];
+  transaction: Transaction;
+};
+type CorrectionActions = {
+  correct: (input: CorrectionInput) => Promise<unknown>;
+  pending: boolean;
+  auditOpen: boolean;
+  toggleAudit: () => void;
+  audit: CorrectionAudit[];
+  auditPending: boolean;
+  auditError?: string;
+  retryAudit: () => void;
+};
+
 type FinanceDashboardProps = {
   name: string;
   accounts: Account[];
   transactions: Transaction[];
   historySearch?: HistorySearch;
+  correctionActions?: CorrectionActions;
   summary: Summary;
   accountActions: AccountActions;
   openingBalancePending?: boolean;
@@ -222,19 +237,21 @@ function SelectField({
 }
 
 function DateField({
+  id = "transaction-date",
   value,
   onChange,
   disabled,
 }: {
+  id?: string;
   value: string;
   onChange: (value: string) => void;
   disabled?: boolean;
 }) {
   return (
-    <Field id="transaction-date" label="Transaction date">
+    <Field id={id} label="Transaction date">
       <div className="relative">
         <Input
-          id="transaction-date"
+          id={id}
           type="date"
           value={value}
           onInput={(event) => onChange(event.currentTarget.value)}
@@ -300,22 +317,31 @@ function MoneyMovementForm({
   accounts,
   busy,
   onPost,
+  replacement,
 }: {
   form: TransactionInput["form"];
   accounts: Account[];
   busy: boolean;
   onPost: (input: TransactionInput) => Promise<void>;
+  replacement?: { draft: TransactionInput; confirmed: boolean };
 }) {
+  const fieldId = useId();
   const isPayment = form === "PAYMENT_CHARGE";
   const initialKind = isPayment ? "EXPENSE" : "INCOME";
   type Line = AllocationDraft & { kind: AllocationKind };
-  const [sourceSelection, setSource] = useState("");
-  const [total, setTotal] = useState("");
-  const [date, setDate] = useState("");
-  const [description, setDescription] = useState("");
-  const [lines, setLines] = useState<Line[]>([
-    { id: "initial", kind: initialKind, accountId: "", amount: "" },
-  ]);
+  const draft = replacement?.draft;
+  const [sourceSelection, setSource] = useState(draft?.sourceAccountId ?? "");
+  const [total, setTotal] = useState(draft?.totalAmount ?? "");
+  const [date, setDate] = useState(draft?.transactionDate ?? "");
+  const [description, setDescription] = useState(draft?.description ?? "");
+  const [lines, setLines] = useState<Line[]>(() =>
+    draft?.allocations.length
+      ? draft.allocations.map((line, index) => ({
+          ...line,
+          id: `existing-${index}`,
+        }))
+      : [{ id: "initial", kind: initialKind, accountId: "", amount: "" }],
+  );
   const [error, setError] = useState("");
   const availableSources = accounts.filter(
     ({ type }) => type === "CASH" || (isPayment && type === "LOAN_TAKEN"),
@@ -338,6 +364,7 @@ function MoneyMovementForm({
   const canPost =
     source &&
     date &&
+    (!replacement || replacement.confirmed) &&
     !duplicateExpense &&
     allocationsMatch(total, lines) &&
     lines.every(({ accountId }, index) =>
@@ -391,7 +418,7 @@ function MoneyMovementForm({
     >
       <fieldset className="flex min-w-0 flex-col gap-4" disabled={busy}>
         <SelectField
-          id="movement-account"
+          id={`${fieldId}-account`}
           label={isPayment ? "Paid from" : "Receiving account"}
           value={sourceSelection}
           onChange={(accountId) => {
@@ -409,16 +436,16 @@ function MoneyMovementForm({
         />
         <div className="grid gap-4 sm:grid-cols-2">
           <AmountField
-            id="movement-total"
+            id={`${fieldId}-total`}
             label="Transaction total"
             value={total}
             onChange={setTotal}
           />
-          <DateField value={date} onChange={setDate} />
+          <DateField id={`${fieldId}-date`} value={date} onChange={setDate} />
         </div>
-        <Field id="movement-description" label="Description (optional)">
+        <Field id={`${fieldId}-description`} label="Description (optional)">
           <Input
-            id="movement-description"
+            id={`${fieldId}-description`}
             value={description}
             onChange={(event) => setDescription(event.target.value)}
           />
@@ -437,11 +464,11 @@ function MoneyMovementForm({
             className="border-border grid gap-3 border p-3 sm:grid-cols-2"
           >
             <Field
-              id={`movement-kind-${index}`}
+              id={`${fieldId}-kind-${index}`}
               label={`Allocation type ${index + 1}`}
             >
               <select
-                id={`movement-kind-${index}`}
+                id={`${fieldId}-kind-${index}`}
                 value={line.kind}
                 className="border-input bg-background h-9 w-full border px-3 text-sm"
                 onChange={(event) =>
@@ -459,7 +486,7 @@ function MoneyMovementForm({
               </select>
             </Field>
             <SelectField
-              id={`movement-counterpart-${index}`}
+              id={`${fieldId}-counterpart-${index}`}
               label={`Allocation account ${index + 1}`}
               value={line.accountId}
               onChange={(accountId) => editLine(line.id, { accountId })}
@@ -467,7 +494,7 @@ function MoneyMovementForm({
               placeholder="Choose an account"
             />
             <AmountField
-              id={`movement-amount-${index}`}
+              id={`${fieldId}-amount-${index}`}
               label={`Allocation amount ${index + 1}`}
               value={line.amount}
               onChange={(amount) => editLine(line.id, { amount })}
@@ -520,12 +547,258 @@ function MoneyMovementForm({
         >
           {busy
             ? "Saving entry…"
-            : isPayment
-              ? "Record payment or charge"
-              : "Record receipt"}
+            : replacement
+              ? "Save replacement"
+              : isPayment
+                ? "Record payment or charge"
+                : "Record receipt"}
         </Button>
       </fieldset>
     </form>
+  );
+}
+
+function CorrectionEditor({
+  selection,
+  accounts,
+  busy,
+  complete,
+  cancel,
+}: {
+  selection: SelectedCorrection;
+  accounts: Account[];
+  busy: boolean;
+  complete: (input: CorrectionInput) => Promise<void>;
+  cancel: () => void;
+}) {
+  const { action, transaction } = selection;
+  const originalForm =
+    transaction.form === "PAYMENT_CHARGE" ? "PAYMENT_CHARGE" : "RECEIVE_MONEY";
+  const [form, setForm] = useState<TransactionInput["form"]>(originalForm);
+  const [reason, setReason] = useState("");
+  const [confirmed, setConfirmed] = useState(false);
+  const [error, setError] = useState("");
+  const ready = confirmed && reason.trim().length > 0 && !busy;
+  const replacement = action === "REPLACE";
+
+  async function voidTransaction() {
+    if (!ready) return;
+    setError("");
+    try {
+      await complete({
+        action: "VOID",
+        transactionId: transaction.id,
+        reason: reason.trim(),
+      });
+    } catch (error) {
+      setError(
+        error instanceof Error
+          ? error.message
+          : "The transaction could not be voided.",
+      );
+    }
+  }
+
+  return (
+    <section
+      aria-label="Transaction correction"
+      className="border-border flex flex-col gap-3 border-b p-4"
+    >
+      <div className="flex items-center justify-between gap-2">
+        <h2 className="text-sm font-medium">
+          {replacement ? "Replace transaction" : "Void transaction"}
+        </h2>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          onClick={cancel}
+          disabled={busy}
+        >
+          Cancel correction
+        </Button>
+      </div>
+      <p className="text-muted-foreground text-xs">
+        {transaction.description || transaction.transactionDate} ·{" "}
+        {formatMoney(transaction.totalAmount)}
+      </p>
+      {replacement ? (
+        <Field id="replacement-form" label="Replacement form">
+          <select
+            id="replacement-form"
+            value={form}
+            disabled={busy}
+            className="border-input bg-background h-9 w-full border px-3 text-sm"
+            onChange={(event) =>
+              setForm(event.target.value as TransactionInput["form"])
+            }
+          >
+            <option value="PAYMENT_CHARGE">Payment or charge</option>
+            <option value="RECEIVE_MONEY">Receive money</option>
+          </select>
+        </Field>
+      ) : null}
+      <Field id="correction-reason" label="Correction reason">
+        <Input
+          id="correction-reason"
+          value={reason}
+          onInput={(event) => setReason(event.currentTarget.value)}
+          disabled={busy}
+        />
+      </Field>
+      <div className="flex items-center gap-2">
+        <input
+          id="confirm-correction"
+          type="checkbox"
+          checked={confirmed}
+          disabled={busy}
+          onChange={(event) => setConfirmed(event.currentTarget.checked)}
+        />
+        <Label htmlFor="confirm-correction">
+          Confirm {replacement ? "replacement" : "void"}
+        </Label>
+      </div>
+      {replacement ? (
+        <MoneyMovementForm
+          key={form}
+          form={form}
+          accounts={accounts}
+          busy={busy}
+          replacement={{
+            confirmed: ready,
+            draft: {
+              form,
+              sourceAccountId:
+                form === originalForm ? transaction.sourceAccountId : "",
+              totalAmount: transaction.totalAmount,
+              transactionDate: transaction.transactionDate,
+              description: transaction.description ?? undefined,
+              allocations:
+                form === originalForm
+                  ? transaction.allocations.map(
+                      ({ accountId, amount, kind }) => ({
+                        accountId,
+                        amount,
+                        kind: kind as AllocationKind,
+                      }),
+                    )
+                  : [],
+            },
+          }}
+          onPost={(draft) =>
+            complete({
+              action: "REPLACE",
+              transactionId: transaction.id,
+              reason: reason.trim(),
+              replacement: draft,
+            })
+          }
+        />
+      ) : (
+        <Button
+          type="button"
+          variant="destructive"
+          size="sm"
+          className="self-start"
+          disabled={!ready}
+          onClick={() => void voidTransaction()}
+        >
+          Void transaction
+        </Button>
+      )}
+      {error ? (
+        <p role="alert" className="text-destructive text-sm">
+          {error}
+        </p>
+      ) : null}
+    </section>
+  );
+}
+
+function CorrectionHistory({
+  actions,
+  accounts,
+}: {
+  actions: CorrectionActions;
+  accounts: Account[];
+}) {
+  const accountNames = new Map(accounts.map(({ id, name }) => [id, name]));
+  if (actions.auditPending)
+    return (
+      <p role="status" className="text-muted-foreground p-4 text-sm">
+        Loading correction history…
+      </p>
+    );
+  if (actions.auditError)
+    return (
+      <div className="flex flex-col gap-2 p-4">
+        <p role="alert" className="text-destructive text-sm">
+          {actions.auditError}
+        </p>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="self-start"
+          onClick={actions.retryAudit}
+        >
+          Retry correction history
+        </Button>
+      </div>
+    );
+  if (!actions.audit.length)
+    return (
+      <p className="text-muted-foreground p-4 text-sm">
+        No corrections recorded.
+      </p>
+    );
+  return (
+    <ol
+      aria-label="Transaction correction history"
+      className="divide-border divide-y"
+    >
+      {actions.audit.map((entry) => (
+        <li key={entry.id} className="flex flex-col gap-2 px-4 py-3 text-sm">
+          <p className="font-medium">
+            {entry.action === "REPLACE" ? "Replaced" : "Voided"} ·{" "}
+            {entry.reason}
+          </p>
+          <time
+            className="text-muted-foreground text-xs"
+            dateTime={entry.recordedAt}
+          >
+            {entry.recordedAt.slice(0, 19).replace("T", " ")} UTC
+          </time>
+          {(
+            [
+              ["Original", entry.original],
+              ["Replacement", entry.replacement],
+            ] as const
+          ).map(([label, transaction]) =>
+            transaction ? (
+              <details key={label}>
+                <summary>
+                  {label} · {transaction.transactionDate} ·{" "}
+                  {formatMoney(transaction.totalAmount)}
+                </summary>
+                <p className="text-muted-foreground">
+                  {transaction.description ||
+                    accountNames.get(transaction.sourceAccountId)}
+                </p>
+                <ul className="text-muted-foreground flex flex-col gap-1 pl-4 text-xs">
+                  {transaction.allocations.map((allocation) => (
+                    <li key={allocation.id}>
+                      {allocation.accountName} ·{" "}
+                      {formatMoney(allocation.amount)}
+                    </li>
+                  ))}
+                </ul>
+              </details>
+            ) : null,
+          )}
+        </li>
+      ))}
+    </ol>
   );
 }
 
@@ -666,6 +939,7 @@ export function FinanceDashboard({
   accounts,
   transactions,
   historySearch,
+  correctionActions,
   summary,
   accountActions,
   openingBalancePending = false,
@@ -683,6 +957,8 @@ export function FinanceDashboard({
   const expenseAccounts = accounts.filter(
     (account) => account.type === "EXPENSE",
   );
+  const [selectedCorrection, setSelectedCorrection] =
+    useState<SelectedCorrection | null>(null);
   const visibleTransactions = historySearch?.transactions ?? transactions;
   const postedAccountIds = new Set(
     transactions.flatMap(({ sourceAccountId, allocations }) => [
@@ -692,9 +968,7 @@ export function FinanceDashboard({
   );
   const accountsNeedingOpeningBalance = accounts.filter(
     (account) =>
-      supportsOpeningBalance(account.type) &&
-      account.openingBalance === null &&
-      !postedAccountIds.has(account.id),
+      account.openingBalanceEligible && !postedAccountIds.has(account.id),
   );
   const [activeAction, setActiveAction] = useState<Action>(() =>
     accountsNeedingOpeningBalance.length > 0 ? "opening" : "income",
@@ -748,7 +1022,10 @@ export function FinanceDashboard({
   const purchaseCardId = activeAccountId(loanAccounts, purchaseCardSelection);
   const repaymentCashId = activeAccountId(cashAccounts, repaymentCashSelection);
   const repaymentCardId = activeAccountId(loanAccounts, repaymentCardSelection);
-  const isBusy = openingBalancePending || transactionPending;
+  const isBusy =
+    openingBalancePending ||
+    transactionPending ||
+    (correctionActions?.pending ?? false);
   const cashTotal = totalMoney(
     summary.balances
       .filter((account) => account.type === "CASH")
@@ -1451,20 +1728,61 @@ export function FinanceDashboard({
                     Your transactions
                   </CardTitle>
                   <span className="text-muted-foreground text-xs">
-                    {historySearch?.pending || historySearch?.error
+                    {correctionActions?.auditOpen ||
+                    historySearch?.pending ||
+                    historySearch?.error
                       ? null
                       : `${visibleTransactions.length} ${historySearch?.filtered ? "matches" : "total"}`}
                   </span>
                 </div>
+                {correctionActions ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="self-start"
+                    aria-expanded={correctionActions.auditOpen}
+                    onClick={() => {
+                      setSelectedCorrection(null);
+                      correctionActions.toggleAudit();
+                    }}
+                  >
+                    {correctionActions.auditOpen
+                      ? "Show active transactions"
+                      : "Correction history"}
+                  </Button>
+                ) : null}
               </CardHeader>
               <CardContent className="p-0">
-                {historySearch ? (
-                  <HistoryFilterForm
+                {selectedCorrection &&
+                correctionActions &&
+                !correctionActions.auditOpen ? (
+                  <CorrectionEditor
+                    key={`${selectedCorrection.transaction.id}-${selectedCorrection.action}`}
+                    selection={selectedCorrection}
                     accounts={accounts}
-                    apply={historySearch.apply}
+                    busy={correctionActions.pending}
+                    cancel={() => setSelectedCorrection(null)}
+                    complete={async (input) => {
+                      await correctionActions.correct(input);
+                      setSelectedCorrection(null);
+                    }}
                   />
                 ) : null}
-                {historySearch?.pending ? (
+                {historySearch ? (
+                  <div hidden={correctionActions?.auditOpen}>
+                    <HistoryFilterForm
+                      accounts={accounts}
+                      apply={historySearch.apply}
+                    />
+                  </div>
+                ) : null}
+                {correctionActions?.auditOpen ? (
+                  <CorrectionHistory
+                    actions={correctionActions}
+                    accounts={accounts}
+                  />
+                ) : historySearch?.pending ? (
                   <p
                     role="status"
                     className="text-muted-foreground p-4 text-sm"
@@ -1546,6 +1864,38 @@ export function FinanceDashboard({
                               {transaction.transactionDate}
                               {allocationNames ? ` · ${allocationNames}` : ""}
                             </p>
+                            {correctionActions ? (
+                              <div className="mt-2 flex flex-wrap gap-2">
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="outline"
+                                  disabled={isBusy}
+                                  onClick={() =>
+                                    setSelectedCorrection({
+                                      action: "REPLACE",
+                                      transaction,
+                                    })
+                                  }
+                                >
+                                  Replace
+                                </Button>
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="ghost"
+                                  disabled={isBusy}
+                                  onClick={() =>
+                                    setSelectedCorrection({
+                                      action: "VOID",
+                                      transaction,
+                                    })
+                                  }
+                                >
+                                  Void
+                                </Button>
+                              </div>
+                            ) : null}
                           </div>
                           <span
                             className={`shrink-0 text-sm font-medium tabular-nums ${isIncome ? "text-emerald-400" : "text-foreground"}`}
