@@ -15,6 +15,7 @@ const ids = {
   userA: crypto.randomUUID(),
   userB: crypto.randomUUID(),
   administrator: crypto.randomUUID(),
+  historyUser: crypto.randomUUID(),
 };
 const accounts = {
   bank: crypto.randomUUID(),
@@ -78,6 +79,11 @@ beforeAll(async () => {
         name: "Finance Administrator",
         email: `${ids.administrator}@example.test`,
         role: "Administrator",
+      },
+      {
+        id: ids.historyUser,
+        name: "Synthetic History User",
+        email: `${ids.historyUser}@example.test`,
       },
     ],
   });
@@ -1526,5 +1532,239 @@ describe("FEAT-10 expanded money movement", () => {
     expect(await api.accounts.get({ accountId: bank.id })).toMatchObject({
       balance: "1.50",
     });
+  });
+});
+
+describe("FEAT-11 history filters", () => {
+  const api = caller(ids.historyUser).finance;
+  async function prepareHistory() {
+    const [bank, wallet, income, expense, card] = await Promise.all([
+      api.accounts.create({ name: "Primary bank", type: "CASH" }),
+      api.accounts.create({
+        name: "Primary bank",
+        type: "CASH",
+        openingBalance: "100.00",
+      }),
+      api.accounts.create({ name: "Consulting", type: "INCOME" }),
+      api.accounts.create({ name: "Gear", type: "EXPENSE" }),
+      api.accounts.create({ name: "Travel card", type: "LOAN_TAKEN" }),
+    ]);
+    const before = await api.transactions.create({
+      form: "RECEIVE_MONEY",
+      sourceAccountId: bank.id,
+      totalAmount: "1.00",
+      transactionDate: "2024-02-28",
+      description: "Promo 50XXx",
+      allocations: [{ kind: "INCOME", accountId: income.id, amount: "1.00" }],
+    });
+    const leap = await api.transactions.create({
+      form: "RECEIVE_MONEY",
+      sourceAccountId: bank.id,
+      totalAmount: "3.00",
+      transactionDate: "2024-02-29",
+      description: "Leap promo 50%_\\X",
+      allocations: [
+        { kind: "INCOME", accountId: income.id, amount: "1.00" },
+        { kind: "TRANSFER_FROM_CASH", accountId: wallet.id, amount: "2.00" },
+      ],
+    });
+    const charge = await api.transactions.create({
+      form: "PAYMENT_CHARGE",
+      sourceAccountId: card.id,
+      totalAmount: "1.00",
+      transactionDate: "2024-02-29",
+      description: "Trip gear",
+      allocations: [{ kind: "EXPENSE", accountId: expense.id, amount: "1.00" }],
+    });
+    const middle = await api.transactions.create({
+      form: "RECEIVE_MONEY",
+      sourceAccountId: bank.id,
+      totalAmount: "1.00",
+      transactionDate: "2024-03-01",
+      description: "March receipt",
+      allocations: [{ kind: "INCOME", accountId: income.id, amount: "1.00" }],
+    });
+    const after = await api.transactions.create({
+      form: "RECEIVE_MONEY",
+      sourceAccountId: bank.id,
+      totalAmount: "1.00",
+      transactionDate: "2024-03-02",
+      description: "Later receipt",
+      allocations: [{ kind: "INCOME", accountId: income.id, amount: "1.00" }],
+    });
+    await db.financialTransaction.updateMany({
+      where: { ownerId: ids.historyUser, id: { in: [leap.id, charge.id] } },
+      data: { createdAt: new Date("2026-11-27T00:00:00.000Z") },
+    });
+    const foreign = await caller(ids.userB).finance.transactions.create({
+      form: "RECEIVE_MONEY",
+      sourceAccountId: accounts.userBBank,
+      totalAmount: "1.00",
+      transactionDate: "2024-02-29",
+      description: "Foreign private history marker",
+      allocations: [
+        {
+          kind: "INCOME",
+          accountId: (
+            await caller(ids.userB).finance.accounts.create({
+              name: "Consulting",
+              type: "INCOME",
+            })
+          ).id,
+          amount: "1.00",
+        },
+      ],
+    });
+    return {
+      bank,
+      wallet,
+      income,
+      expense,
+      card,
+      before,
+      leap,
+      charge,
+      middle,
+      after,
+      foreign,
+    };
+  }
+  let fixture: Awaited<ReturnType<typeof prepareHistory>>;
+  beforeAll(async () => {
+    fixture = await prepareHistory();
+  });
+
+  it("F11-STS-01 preserves unfiltered history and sorts exact date ties by ID", async () => {
+    const { before, leap, charge, middle, after } = fixture;
+    const tied = [leap.id, charge.id].sort().reverse();
+    const results = await api.transactions.history();
+    expect(results.map(({ id }) => id)).toEqual([
+      after.id,
+      middle.id,
+      ...tied,
+      before.id,
+    ]);
+    expect(await api.transactions.history({})).toEqual(results);
+    expect(await api.transactions.history({ search: " \t " })).toEqual(results);
+  });
+
+  it("F11-STS-02 applies inclusive calendar bounds and supports leap-day and one-sided ranges", async () => {
+    const { before, leap, charge, middle, after } = fixture;
+    const idsIn = async (range: { fromDate?: string; toDate?: string }) =>
+      (await api.transactions.history(range)).map(({ id }) => id);
+    const tied = [leap.id, charge.id].sort().reverse();
+    expect(
+      await idsIn({ fromDate: "2024-02-29", toDate: "2024-03-01" }),
+    ).toEqual([middle.id, ...tied]);
+    expect(
+      await idsIn({ fromDate: "2024-02-29", toDate: "2024-02-29" }),
+    ).toEqual(tied);
+    expect(await idsIn({ fromDate: "2024-03-01" })).toEqual([
+      after.id,
+      middle.id,
+    ]);
+    expect(await idsIn({ toDate: "2024-02-29" })).toEqual([...tied, before.id]);
+  });
+
+  it("F11-STS-03 searches literal text and current account names without duplicating rows", async () => {
+    const { leap, charge, wallet, expense } = fixture;
+    const literal = await api.transactions.history({ search: "  50%_\\x  " });
+    expect(literal.map(({ id }) => id)).toEqual([leap.id]);
+    expect(literal[0]?.allocations).toHaveLength(2);
+
+    const nameMatches = await api.transactions.history({
+      search: "PRIMARY BANK",
+    });
+    expect(
+      nameMatches.map(({ id }) => id).filter((id) => id === leap.id),
+    ).toHaveLength(1);
+    expect(nameMatches.some(({ id }) => id === charge.id)).toBe(false);
+    expect(
+      (await api.transactions.history({ accountId: wallet.id })).map(
+        ({ id }) => id,
+      ),
+    ).toEqual([leap.id]);
+
+    await api.accounts.rename({
+      accountId: expense.id,
+      name: "Outdoor equipment",
+    });
+    expect(
+      (await api.transactions.history({ search: "OUTDOOR" })).map(
+        ({ id }) => id,
+      ),
+    ).toEqual([charge.id]);
+  });
+
+  it("F11-STS-04 composes every filter and returns no results for valid nonmatches", async () => {
+    const { leap, bank } = fixture;
+    const input = {
+      form: "RECEIVE_MONEY" as const,
+      accountId: bank.id,
+      search: "LEAP",
+      fromDate: "2024-02-29",
+      toDate: "2024-03-01",
+    };
+    expect((await api.transactions.history(input)).map(({ id }) => id)).toEqual(
+      [leap.id],
+    );
+    expect(
+      await api.transactions.history({ ...input, form: "PAYMENT_CHARGE" }),
+    ).toEqual([]);
+    expect(
+      await api.transactions.history({
+        ...input,
+        search: "No such description",
+      }),
+    ).toEqual([]);
+  });
+
+  it("F11-STS-05 rejects invalid filters and preserves history and summary", async () => {
+    const history = await api.transactions.history();
+    const summary = await api.summary.get();
+    for (const input of [
+      { fromDate: "2024-03-01", toDate: "2024-02-29" },
+      { fromDate: "2025-02-29" },
+      { toDate: "2024-02-29T00:00:00Z" },
+      { accountId: "" },
+      { form: "TRANSFER" as "RECEIVE_MONEY" },
+    ]) {
+      await expectRejectedWithCode(
+        api.transactions.history(input),
+        "BAD_REQUEST",
+      );
+    }
+    expect(await api.transactions.history()).toEqual(history);
+    expect(await api.summary.get()).toEqual(summary);
+  });
+
+  it("F11-STS-06 protects owner data for filtered queries, including unknown and foreign account IDs", async () => {
+    const filter = {
+      search: "Consulting",
+      fromDate: "2024-02-29",
+      toDate: "2024-02-29",
+    };
+    const recs = await api.transactions.history(filter);
+    expect(recs.map(({ id }) => id)).toEqual([fixture.leap.id]);
+    expect(recs.some(({ id }) => id === fixture.foreign.id)).toBe(false);
+    expect(
+      await api.transactions.history({ search: "Foreign private" }),
+    ).toEqual([]);
+    expect(
+      await api.transactions.history({ accountId: accounts.userBBank }),
+    ).toEqual([]);
+    expect(
+      await api.transactions.history({ accountId: "unknown-account" }),
+    ).toEqual([]);
+    await expectRejectedWithCode(
+      appRouter
+        .createCaller({ db, session: null })
+        .finance.transactions.history(filter),
+      "UNAUTHORIZED",
+    );
+    await expectRejectedWithCode(
+      administratorCaller().finance.transactions.history(filter),
+      "FORBIDDEN",
+    );
   });
 });
