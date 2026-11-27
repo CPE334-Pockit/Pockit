@@ -11,6 +11,11 @@ enum FinancialTransactionForm {
   RECEIVE_MONEY
 }
 
+enum FinancialCorrectionAction {
+  REPLACE
+  VOID
+}
+
 enum AllocationKind {
   EXPENSE
   LOAN_TAKEN_REPAYMENT
@@ -23,17 +28,17 @@ enum AllocationKind {
 }
 
 model FinancialAccount {
-  id                        String                 @id @default(cuid())
-  ownerId                   String
-  owner                     User                   @relation(fields: [ownerId], references: [id], onDelete: Cascade)
-  name                      String
-  type                      FinancialAccountType
-  currencyCode              String                 @default("THB")
-  openingBalanceMinorUnits  String?                @db.Text
-  createdAt                 DateTime               @default(now())
-  updatedAt                 DateTime               @updatedAt
-  sourceTransactions        FinancialTransaction[] @relation("TransactionSource")
-  allocationLines           AllocationLine[]
+  id                       String                 @id @default(cuid())
+  ownerId                  String
+  owner                    User                   @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  name                     String
+  type                     FinancialAccountType
+  currencyCode             String                 @default("THB")
+  openingBalanceMinorUnits String?                @db.Text
+  createdAt                DateTime               @default(now())
+  updatedAt                DateTime               @updatedAt
+  sourceTransactions       FinancialTransaction[] @relation("TransactionSource")
+  allocationLines          AllocationLine[]
 
   @@unique([id, ownerId])
   @@index([ownerId, type])
@@ -41,17 +46,19 @@ model FinancialAccount {
 }
 
 model FinancialTransaction {
-  id               String                  @id @default(cuid())
-  ownerId          String
-  owner            User                    @relation(fields: [ownerId], references: [id], onDelete: Cascade)
-  form             FinancialTransactionForm
-  totalMinorUnits  String                  @db.Text
-  transactionDate  DateTime                @db.Date
-  sourceAccountId  String
-  sourceAccount    FinancialAccount        @relation("TransactionSource", fields: [sourceAccountId, ownerId], references: [id, ownerId], onDelete: Restrict)
-  description      String?
-  createdAt        DateTime                @default(now())
-  allocations      AllocationLine[]
+  id              String                          @id @default(cuid())
+  ownerId         String
+  owner           User                            @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  form            FinancialTransactionForm
+  totalMinorUnits String                          @db.Text
+  transactionDate DateTime                        @db.Date
+  sourceAccountId String
+  sourceAccount   FinancialAccount                @relation("TransactionSource", fields: [sourceAccountId, ownerId], references: [id, ownerId], onDelete: Restrict)
+  description     String?
+  createdAt       DateTime                        @default(now())
+  allocations     AllocationLine[]
+  correction      FinancialTransactionCorrection? @relation("CorrectionOriginal")
+  replacementOf   FinancialTransactionCorrection? @relation("CorrectionReplacement")
 
   @@unique([id, ownerId])
   @@index([ownerId, transactionDate])
@@ -59,16 +66,33 @@ model FinancialTransaction {
   @@map("financial_transaction")
 }
 
+model FinancialTransactionCorrection {
+  id            String                    @id @default(cuid())
+  ownerId       String
+  originalId    String
+  original      FinancialTransaction      @relation("CorrectionOriginal", fields: [originalId, ownerId], references: [id, ownerId], onDelete: Restrict, map: "financial_correction_original_fkey")
+  replacementId String?
+  replacement   FinancialTransaction?     @relation("CorrectionReplacement", fields: [replacementId, ownerId], references: [id, ownerId], onDelete: Restrict, map: "financial_correction_replacement_fkey")
+  action        FinancialCorrectionAction
+  reason        String                    @db.Text
+  createdAt     DateTime                  @default(now())
+
+  @@unique([originalId, ownerId], map: "financial_correction_original_key")
+  @@unique([replacementId, ownerId], map: "financial_correction_replacement_key")
+  @@index([ownerId, createdAt], map: "financial_correction_owner_created_idx")
+  @@map("financial_transaction_correction")
+}
+
 model AllocationLine {
-  id               String                    @id @default(cuid())
+  id               String               @id @default(cuid())
   ownerId          String
   transactionId    String
-  transaction      FinancialTransaction      @relation(fields: [transactionId, ownerId], references: [id, ownerId], onDelete: Cascade)
+  transaction      FinancialTransaction @relation(fields: [transactionId, ownerId], references: [id, ownerId], onDelete: Cascade)
   accountId        String
-  account          FinancialAccount          @relation(fields: [accountId, ownerId], references: [id, ownerId], onDelete: Restrict)
+  account          FinancialAccount     @relation(fields: [accountId, ownerId], references: [id, ownerId], onDelete: Restrict)
   kind             AllocationKind
-  amountMinorUnits String                    @db.Text
-  createdAt        DateTime                  @default(now())
+  amountMinorUnits String               @db.Text
+  createdAt        DateTime             @default(now())
 
   @@index([transactionId, ownerId])
   @@index([accountId, ownerId, kind])
