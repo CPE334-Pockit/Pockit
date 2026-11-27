@@ -1796,3 +1796,98 @@ describe("FEAT-11 history filters", () => {
     );
   });
 });
+
+describe("FEAT-12 posted transaction correction", () => {
+  const api = caller(ids.userB).finance;
+  const date = "2026-11-27";
+
+  it("F12-STS-02/03 replaces and voids without deleting the original or its audit history", async () => {
+    const bank = await api.accounts.create({
+      name: "Correction bank",
+      type: "CASH",
+      openingBalance: "100.00",
+    });
+    const dining = await api.accounts.create({
+      name: "Correction dining",
+      type: "EXPENSE",
+    });
+    const groceries = await api.accounts.create({
+      name: "Correction groceries",
+      type: "EXPENSE",
+    });
+    const originalInput = {
+      form: "PAYMENT_CHARGE" as const,
+      sourceAccountId: bank.id,
+      totalAmount: "20.00",
+      transactionDate: date,
+      allocations: [
+        { kind: "EXPENSE" as const, accountId: dining.id, amount: "20.00" },
+      ],
+    };
+    const original = await api.transactions.create(originalInput);
+    const first = await api.transactions.correct({
+      action: "REPLACE",
+      transactionId: original.id,
+      reason: "Wrong category and amount",
+      replacement: {
+        ...originalInput,
+        totalAmount: "12.00",
+        allocations: [
+          { kind: "EXPENSE", accountId: groceries.id, amount: "12.00" },
+        ],
+      },
+    });
+    const reopenedDb = createPrismaClient({ DATABASE_URL: databaseUrl });
+    try {
+      const read = caller(ids.userB, "User", reopenedDb).finance;
+      expect(await read.accounts.get({ accountId: bank.id })).toMatchObject({
+        balance: "88.00",
+      });
+      expect(await read.accounts.get({ accountId: dining.id })).toMatchObject({
+        categoryTotal: "0.00",
+      });
+      expect(
+        await read.accounts.get({ accountId: groceries.id }),
+      ).toMatchObject({ categoryTotal: "12.00" });
+      const active = await read.transactions.history({ accountId: bank.id });
+      expect(active.map(({ id }) => id)).toEqual([first.replacementId]);
+      const audits = await read.transactions.correctionHistory();
+      expect(audits).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            id: first.id,
+            action: "REPLACE",
+            reason: "Wrong category and amount",
+            actorId: ids.userB,
+            original,
+          }),
+        ]),
+      );
+      expect(await read.transactions.history({ accountId: dining.id })).toEqual(
+        [],
+      );
+      if (!first.replacementId) throw new Error("Expected a replacement");
+      await api.transactions.correct({
+        action: "VOID",
+        transactionId: first.replacementId,
+        reason: "Duplicate receipt",
+      });
+      expect(await read.transactions.history({ accountId: bank.id })).toEqual(
+        [],
+      );
+      expect(await read.accounts.get({ accountId: bank.id })).toMatchObject({
+        balance: "100.00",
+      });
+      expect(
+        await read.accounts.get({ accountId: groceries.id }),
+      ).toMatchObject({ categoryTotal: "0.00" });
+      expect(
+        (await read.transactions.correctionHistory()).filter(
+          ({ original }) => original.sourceAccountId === bank.id,
+        ),
+      ).toHaveLength(2);
+    } finally {
+      await reopenedDb.$disconnect();
+    }
+  });
+});
