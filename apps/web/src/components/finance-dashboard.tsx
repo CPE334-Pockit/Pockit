@@ -350,6 +350,9 @@ export function FinanceDashboard({
   const selectedPurchaseCategories = purchaseAllocations
     .map(({ accountId }) => accountId)
     .filter(Boolean);
+  const unusedPurchaseCategory = expenseAccounts.find(
+    ({ id }) => !selectedPurchaseCategories.includes(id),
+  );
   const hasDuplicatePurchaseCategory =
     new Set(selectedPurchaseCategories).size !==
     selectedPurchaseCategories.length;
@@ -851,17 +854,18 @@ export function FinanceDashboard({
                         type="button"
                         variant="outline"
                         size="sm"
-                        disabled={isBusy || expenseAccounts.length === 0}
-                        onClick={() =>
+                        disabled={isBusy || !unusedPurchaseCategory}
+                        onClick={() => {
+                          if (!unusedPurchaseCategory) return;
                           setPurchaseAllocations((current) => [
                             ...current,
                             {
                               id: crypto.randomUUID(),
-                              accountId: expenseAccounts[0]?.id ?? "",
+                              accountId: unusedPurchaseCategory.id,
                               amount: "",
                             },
-                          ])
-                        }
+                          ]);
+                        }}
                       >
                         <Plus aria-hidden="true" />
                         Add category

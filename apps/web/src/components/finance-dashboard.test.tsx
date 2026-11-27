@@ -273,6 +273,18 @@ describe("finance dashboard", () => {
     });
   });
 
+  it("adds an unused category and stops when all are selected", () => {
+    const view = renderDashboard();
+    fireEvent.click(view.getByRole("button", { name: /card purchase/i }));
+    fireEvent.click(view.getByRole("button", { name: /remove category 2/i }));
+    const add = view.getByRole("button", { name: /add category/i });
+    fireEvent.click(add);
+    expect(
+      (view.getByLabelText("Expense category 2") as HTMLSelectElement).value,
+    ).toBe("expense-groceries");
+    expect(add.hasAttribute("disabled")).toBe(true);
+  });
+
   it("lets the owner correct a duplicate purchase category", async () => {
     createTransaction.mockClear();
     const view = renderDashboard();
