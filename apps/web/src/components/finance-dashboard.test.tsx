@@ -129,6 +129,148 @@ const createTransaction = mock(
   (_input: Inputs["finance"]["transactions"]["create"]) => Promise.resolve(),
 );
 
+describe("F13-STS-05 favorites and duplication", () => {
+  const payment: Transaction = {
+    id: "favorite-payment",
+    form: "PAYMENT_CHARGE",
+    sourceAccountId: "card-main",
+    totalAmount: "20.00",
+    transactionDate: "2026-11-27",
+    description: "Saved lunch",
+    allocations: [
+      {
+        id: "lunch-line",
+        accountId: "expense-dining",
+        accountName: "Dining",
+        kind: "EXPENSE",
+        amount: "20.00",
+      },
+    ],
+  };
+  const receipt: Transaction = {
+    ...payment,
+    id: "favorite-receipt",
+    form: "RECEIVE_MONEY",
+    sourceAccountId: "cash-main",
+    description: "Saved income",
+    allocations: [
+      {
+        id: "income-line",
+        accountId: "income-salary",
+        accountName: "Salary",
+        kind: "INCOME",
+        amount: "20.00",
+      },
+    ],
+  };
+
+  function renderFavorites() {
+    const write = mock(
+      async (_input: Inputs["finance"]["transactions"]["setFavorite"]) => {},
+    );
+    const post = mock(
+      async (_input: Inputs["finance"]["transactions"]["create"]) => {},
+    );
+    const dashboard = (favorites: Transaction[]) => (
+      <FinanceDashboard
+        name="Demo User"
+        accounts={accounts}
+        summary={summary}
+        accountActions={accountActions}
+        transactions={[payment, receipt]}
+        onSetOpeningBalance={setOpeningBalance}
+        onCreateTransaction={post}
+        favoriteActions={{
+          transactions: favorites,
+          setFavorite: write,
+          pending: false,
+          loading: false,
+          retry: () => {},
+        }}
+      />
+    );
+    const view = render(dashboard([]));
+    return { view, dashboard, write, post };
+  }
+
+  it("marks and removes a favorite and renders its persisted membership", async () => {
+    const { view, dashboard, write } = renderFavorites();
+    fireEvent.click(view.getByRole("button", { name: "Favorites" }));
+    expect(view.getByText("No favorite transactions.")).toBeTruthy();
+    fireEvent.click(
+      view.getByRole("button", { name: "Show active transactions" }),
+    );
+    await act(async () =>
+      fireEvent.click(
+        view.getByRole("button", { name: "Favorite Saved lunch" }),
+      ),
+    );
+    expect(write).toHaveBeenLastCalledWith({
+      transactionId: payment.id,
+      favorite: true,
+    });
+    view.rerender(dashboard([payment]));
+    fireEvent.click(view.getByRole("button", { name: "Favorites" }));
+    expect(view.queryByText("Saved income")).toBeNull();
+    await act(async () =>
+      fireEvent.click(
+        view.getByRole("button", { name: "Remove favorite Saved lunch" }),
+      ),
+    );
+    expect(write).toHaveBeenLastCalledWith({
+      transactionId: payment.id,
+      favorite: false,
+    });
+  });
+
+  it("prefills both forms and preserves edited values when a duplicate is rejected", async () => {
+    const { view, post } = renderFavorites();
+    fireEvent.click(
+      view.getByRole("button", { name: "Duplicate Saved lunch" }),
+    );
+    const editor = within(
+      view.getByRole("region", { name: "Duplicate transaction" }),
+    );
+    expect(
+      (editor.getByLabelText("Allocation account 1") as HTMLSelectElement)
+        .value,
+    ).toBe("expense-dining");
+    fireEvent.click(editor.getByRole("button", { name: "Cancel duplicate" }));
+    expect(post).not.toHaveBeenCalled();
+    fireEvent.click(
+      view.getByRole("button", { name: "Duplicate Saved income" }),
+    );
+    expect(
+      (editor.getByLabelText("Allocation account 1") as HTMLSelectElement)
+        .value,
+    ).toBe("income-salary");
+    const amount = editor.getByLabelText(
+      "Allocation amount 1",
+    ) as HTMLInputElement;
+    fireEvent.input(amount, { target: { value: "12.30" } });
+    fireEvent.input(editor.getByLabelText("Transaction total"), {
+      target: { value: "12.30" },
+    });
+    post.mockRejectedValueOnce(new Error("Please retry"));
+    const save = editor.getByRole("button", { name: "Save duplicate" });
+    await act(async () => fireEvent.click(save));
+    expect(editor.getByRole("alert").textContent).toBe("Please retry");
+    expect(amount.value).toBe("12.30");
+    await act(async () => fireEvent.click(save));
+    expect(post).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        form: "RECEIVE_MONEY",
+        sourceAccountId: "cash-main",
+        totalAmount: "12.30",
+        transactionDate: "2026-11-27",
+      }),
+    );
+    expect(
+      view.queryByRole("region", { name: "Duplicate transaction" }),
+    ).toBeNull();
+  });
+});
+
 function renderDashboard(displayedAccounts = accounts) {
   return render(
     <FinanceDashboard
