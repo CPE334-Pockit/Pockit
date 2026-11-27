@@ -777,6 +777,9 @@ describe("Sprint 1 financial API", () => {
     await expect(anonymous.finance.accounts.list()).rejects.toMatchObject({
       code: "UNAUTHORIZED",
     });
+    await expect(anonymous.finance.summary.get()).rejects.toMatchObject({
+      code: "UNAUTHORIZED",
+    });
     await expect(administrator.finance.accounts.list()).rejects.toMatchObject({
       code: "FORBIDDEN",
     });
@@ -1135,30 +1138,35 @@ describe("FEAT-10 expanded money movement", () => {
   it("F10-STS-01/02 persists both mixed forms with exact counterpart effects", async () => {
     const api = finance();
     const before = await api.summary.get();
-    const [bank, wallet, card, loan, salary, dining] = await Promise.all([
-      api.accounts.create({
-        name: "Movement bank",
-        type: "CASH",
-        openingBalance: "1000",
-      }),
-      api.accounts.create({
-        name: "Movement wallet",
-        type: "CASH",
-        openingBalance: "200",
-      }),
-      api.accounts.create({
-        name: "Movement card",
-        type: "LOAN_TAKEN",
-        openingBalance: "300",
-      }),
-      api.accounts.create({
-        name: "Movement loan",
-        type: "LOAN_GIVEN",
-        openingBalance: "100",
-      }),
-      api.accounts.create({ name: "Movement salary", type: "INCOME" }),
-      api.accounts.create({ name: "Movement dining", type: "EXPENSE" }),
-    ]);
+    const [bank, wallet, card, loan, salary, dining, unusedExpense] =
+      await Promise.all([
+        api.accounts.create({
+          name: "Movement bank",
+          type: "CASH",
+          openingBalance: "1000",
+        }),
+        api.accounts.create({
+          name: "Movement wallet",
+          type: "CASH",
+          openingBalance: "200",
+        }),
+        api.accounts.create({
+          name: "Movement card",
+          type: "LOAN_TAKEN",
+          openingBalance: "300",
+        }),
+        api.accounts.create({
+          name: "Movement loan",
+          type: "LOAN_GIVEN",
+          openingBalance: "100",
+        }),
+        api.accounts.create({ name: "Movement salary", type: "INCOME" }),
+        api.accounts.create({ name: "Movement dining", type: "EXPENSE" }),
+        api.accounts.create({
+          name: "Movement unused expense",
+          type: "EXPENSE",
+        }),
+      ]);
     const payment = await api.transactions.create({
       form: "PAYMENT_CHARGE",
       sourceAccountId: bank.id,
@@ -1188,7 +1196,7 @@ describe("FEAT-10 expanded money movement", () => {
       form: "RECEIVE_MONEY",
       sourceAccountId: bank.id,
       totalAmount: "95",
-      transactionDate: date,
+      transactionDate: "2026-11-28",
       allocations: [
         { kind: "INCOME", accountId: salary.id, amount: "25" },
         { kind: "LOAN_GIVEN_REPAYMENT", accountId: loan.id, amount: "20" },
@@ -1218,8 +1226,23 @@ describe("FEAT-10 expanded money movement", () => {
         expect.arrayContaining([
           expect.objectContaining({ accountId: dining.id, total: "40.00" }),
           expect.objectContaining({ accountId: salary.id, total: "25.00" }),
+          expect.objectContaining({
+            accountId: unusedExpense.id,
+            total: "0.00",
+          }),
         ]),
       );
+      expect(
+        summary.categories.some(
+          ({ accountId }) => accountId === accounts.salary,
+        ),
+      ).toBe(false);
+      const otherSummary = await userCaller().finance.summary.get();
+      expect(
+        otherSummary.categories.some(
+          ({ accountId }) => accountId === salary.id || accountId === dining.id,
+        ),
+      ).toBe(false);
       expect(await read.transactions.history()).toEqual(
         expect.arrayContaining([payment, receipt]),
       );
@@ -1853,10 +1876,17 @@ describe("FEAT-12 posted transaction correction", () => {
       expect(
         await read.accounts.get({ accountId: groceries.id }),
       ).toMatchObject({ categoryTotal: "12.00" });
+      const replacedSummary = await read.summary.get();
       expect(
-        BigInt((await read.summary.get()).expenseTotal.replace(".", "")) -
+        BigInt(replacedSummary.expenseTotal.replace(".", "")) -
           BigInt(initialExpenseTotal.replace(".", "")),
       ).toBe(1200n);
+      expect(replacedSummary.categories).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ accountId: dining.id, total: "0.00" }),
+          expect.objectContaining({ accountId: groceries.id, total: "12.00" }),
+        ]),
+      );
       if (!first.replacementId) throw new Error("Expected a replacement");
       const active = await read.transactions.history({ accountId: bank.id });
       expect(active.map(({ id }) => id)).toEqual([first.replacementId]);
@@ -1889,7 +1919,11 @@ describe("FEAT-12 posted transaction correction", () => {
       expect(
         await read.accounts.get({ accountId: groceries.id }),
       ).toMatchObject({ categoryTotal: "0.00" });
-      expect((await read.summary.get()).expenseTotal).toBe(initialExpenseTotal);
+      const voidedSummary = await read.summary.get();
+      expect(voidedSummary.expenseTotal).toBe(initialExpenseTotal);
+      expect(voidedSummary.categories).toContainEqual(
+        expect.objectContaining({ accountId: groceries.id, total: "0.00" }),
+      );
       expect(
         (await read.transactions.correctionHistory()).filter(
           ({ original }) => original.sourceAccountId === bank.id,
@@ -2319,5 +2353,11 @@ describe("FEAT-13 transaction favorites", () => {
     expect(
       await api.accounts.get({ accountId: input.sourceAccountId }),
     ).toMatchObject({ balance: "32.30" });
+    expect((await api.summary.get()).categories).toContainEqual(
+      expect.objectContaining({
+        accountId: input.allocations[0]?.accountId,
+        total: "32.30",
+      }),
+    );
   });
 });

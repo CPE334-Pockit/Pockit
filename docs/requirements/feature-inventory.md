@@ -25,7 +25,7 @@ This inventory maps every stable FR, BR, and NFR in the current SRS to one or mo
 | **FEAT-11** | **Transaction history search and filtering:** Find and filter a User's persisted Transaction history. | Sprint 2 — proposed | FEAT-07; preserve User ownership restrictions. | FR-10, FR-13; BR-08; NFR-01, NFR-02, NFR-06 |
 | **FEAT-12** | **Posted Transaction correction:** Correct a Transaction while preserving consistent balances and required history/audit behavior. | Sprint 2 — proposed; gated | FEAT-05, FEAT-06, FEAT-10; OQ-04 must be resolved before the correction contract is approved. | FR-13; BR-04, BR-08, BR-10; NFR-01, NFR-02, NFR-03, NFR-06 |
 | **FEAT-13** | **Favorites and duplication:** Mark/view favorite Transactions and duplicate an existing Transaction into a separate editable Transaction. | Sprint 3 — proposed | FEAT-07; duplication must not modify the original. | FR-11, FR-12; BR-09; NFR-02, NFR-06 |
-| **FEAT-14** | **Expanded category analysis and reports:** Extend beyond the Sprint 1 seeded-category spending view to the approved later-sprint summaries/reporting scope. | Sprint 3 — proposed; details open | FEAT-07, FEAT-10; report types, periods, and filters need clarification before a feature contract. | FR-09, FR-10; BR-06, BR-07; NFR-02, NFR-06 |
+| **FEAT-14** | **[All-time category report](../features/feat-14-category-report.md):** Report exact per-category totals across all owned Income and Expense Accounts. | Sprint 3 | FEAT-07, FEAT-10, FEAT-12; use active postings and existing owner-scoped summaries. | FR-09, FR-10; BR-06, BR-07; NFR-02, NFR-06 |
 
 ## 2. Requirement-to-feature-to-sprint matrix
 
@@ -79,7 +79,7 @@ Each row is one stable requirement in the SRS. A requirement may map to multiple
 
 | Gap / question | Current treatment | Follow-up |
 | --- | --- | --- |
-| The Theme 7 “Later sprints” paragraph mentions reports, but the SRS has no separate report-specific FR defining report content, periods, or filters. | FEAT-14 provisionally maps the reporting outcome to FR-10's summaries/category spending. Do not invent report formats or period rules. | Issue #6 should decide whether FR-10 is sufficient or the SRS needs a stable additional FR before report contracts are written. |
+| Theme 7 names reports without defining period or format. | On 28 November 2026 ICT, the team confirmed an all-time per-category report under FR-10. | [#88](https://github.com/CPE334-Pockit/Pockit/issues/88) tracks contract review, implementation and acceptance. |
 | Exact Sprint 2 versus Sprint 3 assignment is not approved. | The inventory proposes S2/S3 placements to give every feature a planned sprint, explicitly marked proposed. | Issue #6 ratifies or revises the allocations based on dependencies and team capacity. |
 | Currency code/precision and rounding rules (OQ-01/OQ-02) are resolved for Sprint 1 in ADR-0001. | FEAT-04–FEAT-06 and FEAT-10 use the exact Sprint 1 policy; no later currency or rounding behavior is implied. | Apply the Issue #8 policy; future extensions need separate decisions. |
 | Transaction correction and audit behavior (OQ-04) is unspecified. | FEAT-12 is proposed for Sprint 2 but explicitly gated; no correction semantics are invented. | Resolve before FEAT-12's Feature-Level SDS/STS. |
