@@ -1767,4 +1767,32 @@ describe("FEAT-11 history filters", () => {
       "FORBIDDEN",
     );
   });
+
+  it("F11-STS-08 returns a newly posted mixed receipt through an already used filter", async () => {
+    const { bank, wallet, income } = fixture;
+    const filters = {
+      fromDate: "2024-03-01",
+      toDate: "2024-03-01",
+      form: "RECEIVE_MONEY" as const,
+      accountId: wallet.id,
+      search: "filter refresh",
+    };
+    expect(await api.transactions.history(filters)).toEqual([]);
+    const posted = await api.transactions.create({
+      transactionDate: "2024-03-01",
+      sourceAccountId: bank.id,
+      form: "RECEIVE_MONEY",
+      totalAmount: "0.03",
+      description: "Filter refresh receipt",
+      allocations: [
+        { kind: "INCOME", accountId: income.id, amount: "0.02" },
+        { kind: "TRANSFER_FROM_CASH", accountId: wallet.id, amount: "0.01" },
+      ],
+    });
+    const results = await api.transactions.history(filters);
+    expect(results.map(({ id }) => id)).toEqual([posted.id]);
+    expect(results[0]?.allocations).toEqual(
+      expect.arrayContaining(posted.allocations),
+    );
+  });
 });

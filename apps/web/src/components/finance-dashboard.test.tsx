@@ -1,9 +1,15 @@
 import type { AppRouter } from "@Pockit/api/routers/index";
 import { describe, expect, it, mock } from "bun:test";
-import { fireEvent, render, waitFor } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { fireEvent, render, waitFor, within } from "@testing-library/react";
+import { createTRPCClient, type TRPCLink } from "@trpc/client";
 import type { inferRouterInputs, inferRouterOutputs } from "@trpc/server";
+import { observable } from "@trpc/server/observable";
 
-import { FinanceDashboard } from "./finance-dashboard";
+import { UserFinanceOverview } from "@/routes/_auth/dashboard";
+import { TRPCProvider } from "@/utils/trpc";
+
+import { FinanceDashboard, type HistoryFilters } from "./finance-dashboard";
 
 type Outputs = inferRouterOutputs<AppRouter>;
 type Inputs = inferRouterInputs<AppRouter>;
@@ -541,5 +547,253 @@ describe("finance dashboard", () => {
     expect(
       (view.getByLabelText("Expense category 3") as HTMLSelectElement).value,
     ).toBe("expense-groceries");
+  });
+
+  it("F11-STS-07 applies and clears history filters without relaxing opening balance eligibility", () => {
+    const posted: Transaction = {
+      id: "history-existing",
+      form: "RECEIVE_MONEY",
+      sourceAccountId: "cash-main",
+      totalAmount: "10.00",
+      transactionDate: "2024-02-29",
+      description: "Already posted salary",
+      allocations: [
+        {
+          id: "history-existing-line",
+          accountId: "income-salary",
+          accountName: "Salary",
+          kind: "INCOME",
+          amount: "10.00",
+        },
+      ],
+    };
+    const apply = mock((_input?: HistoryFilters) => {});
+    const retry = mock(() => {});
+    const base = {
+      name: "Demo User",
+      accounts,
+      transactions: [posted],
+      summary,
+      accountActions,
+      onSetOpeningBalance: setOpeningBalance,
+      onCreateTransaction: createTransaction,
+    };
+    const view = render(
+      <FinanceDashboard
+        {...base}
+        historySearch={{
+          transactions: [posted],
+          apply,
+          retry,
+          filtered: false,
+          pending: false,
+        }}
+      />,
+    );
+    const form = within(
+      view.getByRole("form", { name: "Transaction history filters" }),
+    );
+    expect(view.getByText("Already posted salary")).toBeTruthy();
+    fireEvent.input(form.getByRole("searchbox"), {
+      target: { value: "  salary  " },
+    });
+    fireEvent.input(form.getByLabelText("From"), {
+      target: { value: "2024-03-01" },
+    });
+    fireEvent.input(form.getByLabelText("To"), {
+      target: { value: "2024-02-29" },
+    });
+    fireEvent.change(form.getByLabelText("Form"), {
+      target: { value: "RECEIVE_MONEY" },
+    });
+    fireEvent.change(form.getByLabelText("Account filter"), {
+      target: { value: "income-salary" },
+    });
+    fireEvent.click(form.getByRole("button", { name: "Apply filters" }));
+    expect(form.getByRole("alert").textContent).toContain("start date");
+    expect(apply).not.toHaveBeenCalled();
+
+    fireEvent.input(form.getByLabelText("From"), {
+      target: { value: "2024-02-29" },
+    });
+    fireEvent.click(form.getByRole("button", { name: "Apply filters" }));
+    expect(apply).toHaveBeenCalledWith({
+      search: "salary",
+      fromDate: "2024-02-29",
+      toDate: "2024-02-29",
+      form: "RECEIVE_MONEY",
+      accountId: "income-salary",
+    });
+
+    view.rerender(
+      <FinanceDashboard
+        {...base}
+        historySearch={{
+          transactions: [],
+          apply,
+          retry,
+          filtered: true,
+          pending: true,
+        }}
+      />,
+    );
+    expect(view.getByText("Loading matching transactions…")).toBeTruthy();
+    view.rerender(
+      <FinanceDashboard
+        {...base}
+        historySearch={{
+          transactions: [],
+          apply,
+          retry,
+          filtered: true,
+          pending: false,
+          error: "History temporarily unavailable",
+        }}
+      />,
+    );
+    expect(view.getByRole("alert").textContent).toBe(
+      "History temporarily unavailable",
+    );
+    fireEvent.click(view.getByRole("button", { name: "Retry filters" }));
+    expect(retry).toHaveBeenCalledTimes(1);
+    view.rerender(
+      <FinanceDashboard
+        {...base}
+        historySearch={{
+          transactions: [],
+          apply,
+          retry,
+          filtered: true,
+          pending: false,
+        }}
+      />,
+    );
+    expect(view.getByText("No transactions match these filters.")).toBeTruthy();
+    expect(view.queryByText("Already posted salary")).toBeNull();
+    const openingAccounts = within(
+      view.getByRole("combobox", { name: "Account" }),
+    );
+    expect(
+      openingAccounts.queryByRole("option", { name: "Everyday bank" }),
+    ).toBeNull();
+    expect(
+      openingAccounts.getByRole("option", { name: "Travel card" }),
+    ).toBeTruthy();
+    expect(
+      view.getByRole("region", { name: "Financial overview" }).textContent,
+    ).toContain("฿0.00");
+
+    fireEvent.click(form.getByRole("button", { name: "Clear filters" }));
+    expect(apply.mock.calls.at(-1)).toEqual([]);
+    expect((form.getByRole("searchbox") as HTMLInputElement).value).toBe("");
+    expect(
+      (form.getByLabelText("Account filter") as HTMLSelectElement).value,
+    ).toBe("");
+    view.rerender(
+      <FinanceDashboard
+        {...base}
+        historySearch={{
+          transactions: [posted],
+          apply,
+          retry,
+          filtered: false,
+          pending: false,
+        }}
+      />,
+    );
+    expect(view.getByText("Already posted salary")).toBeTruthy();
+  });
+
+  it("F11-STS-08 refreshes the active filtered history from the normal dashboard after posting", async () => {
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    let posted: Transaction | undefined;
+    const historyQueries: (HistoryFilters | undefined)[] = [];
+    const testLink: TRPCLink<AppRouter> =
+      () =>
+      ({ op }) =>
+        observable((observer) => {
+          switch (op.path) {
+            case "finance.accounts.list":
+              observer.next({ result: { data: accounts } });
+              break;
+            case "finance.summary.get":
+              observer.next({ result: { data: summary } });
+              break;
+            case "finance.transactions.history": {
+              const filter = op.input as HistoryFilters | undefined;
+              historyQueries.push(filter);
+              const matches =
+                !filter?.search || posted?.description?.includes(filter.search);
+              observer.next({
+                result: { data: posted && matches ? [posted] : [] },
+              });
+              break;
+            }
+            case "finance.transactions.create": {
+              const input =
+                op.input as Inputs["finance"]["transactions"]["create"];
+              posted = {
+                ...input,
+                id: "synthetic-new-post",
+                description: input.description ?? null,
+                allocations: input.allocations.map((line, index) => ({
+                  ...line,
+                  id: `synthetic-new-line-${index}`,
+                  accountName: "Salary",
+                })),
+              };
+              observer.next({ result: { data: posted } });
+              break;
+            }
+            default:
+              throw new Error(`Unexpected request: ${op.path}`);
+          }
+          observer.complete();
+        });
+    const trpcClient = createTRPCClient<AppRouter>({ links: [testLink] });
+    const view = render(
+      <QueryClientProvider client={queryClient}>
+        <TRPCProvider trpcClient={trpcClient} queryClient={queryClient}>
+          <UserFinanceOverview
+            name="Demo User"
+            userId="synthetic-history-user"
+          />
+        </TRPCProvider>
+      </QueryClientProvider>,
+    );
+    try {
+      const filters = within(
+        await view.findByRole("form", { name: "Transaction history filters" }),
+      );
+      fireEvent.input(filters.getByRole("searchbox"), {
+        target: { value: "filter refresh" },
+      });
+      fireEvent.click(filters.getByRole("button", { name: "Apply filters" }));
+      await view.findByText("No transactions match these filters.");
+      expect(
+        historyQueries.filter((query) => query?.search === "filter refresh"),
+      ).toHaveLength(1);
+
+      fireEvent.click(view.getByRole("button", { name: /income received/i }));
+      fireEvent.input(view.getByLabelText("Amount received"), {
+        target: { value: "15.00" },
+      });
+      fireEvent.input(view.getByLabelText("Transaction date"), {
+        target: { value: "2024-02-29" },
+      });
+      fireEvent.input(view.getByLabelText("Description"), {
+        target: { value: "filter refresh salary" },
+      });
+      fireEvent.click(view.getByRole("button", { name: "Record income" }));
+      await view.findByText("filter refresh salary");
+      expect(
+        historyQueries.filter((query) => query?.search === "filter refresh"),
+      ).toHaveLength(2);
+    } finally {
+      view.unmount();
+      queryClient.clear();
+    }
   });
 });
