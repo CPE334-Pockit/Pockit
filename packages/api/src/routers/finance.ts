@@ -76,6 +76,8 @@ const correctionSchema = z.discriminatedUnion("action", [
 const activeTransaction = {
   correction: null,
 } satisfies Prisma.FinancialTransactionWhereInput;
+const transactionHistoryOrder: Prisma.FinancialTransactionOrderByWithRelationInput[] =
+  [{ transactionDate: "desc" }, { createdAt: "desc" }, { id: "desc" }];
 const allocationNames = {
   allocations: { include: { account: { select: { name: true } } } },
 } as const;
@@ -693,6 +695,45 @@ export const financeRouter = router({
       }),
   }),
   transactions: router({
+    setFavorite: userProcedure
+      .input(
+        z.object({ transactionId: z.string().min(1), favorite: z.boolean() }),
+      )
+      .mutation(({ ctx, input }) =>
+        serializable(ctx.db, async (tx) => {
+          const ownerId = ctx.session.user.id;
+          const transaction = await tx.financialTransaction.findFirst({
+            where: { id: input.transactionId, ownerId, ...activeTransaction },
+            select: { id: true },
+          });
+          if (!transaction) {
+            throw new TRPCError({
+              code: "NOT_FOUND",
+              message: "Transaction not found",
+            });
+          }
+
+          const link = { transactionId: transaction.id, ownerId };
+          if (input.favorite) {
+            await tx.financialTransactionFavorite.createMany({
+              data: link,
+              skipDuplicates: true,
+            });
+          } else {
+            await tx.financialTransactionFavorite.deleteMany({ where: link });
+          }
+          return { favorite: input.favorite };
+        }),
+      ),
+    favorites: userProcedure.query(async ({ ctx }) => {
+      const ownerId = ctx.session.user.id;
+      const transactions = await ctx.db.financialTransaction.findMany({
+        where: { ownerId, ...activeTransaction, favorite: { isNot: null } },
+        orderBy: transactionHistoryOrder,
+        include: allocationNames,
+      });
+      return transactions.map(serializeTransaction);
+    }),
     create: userProcedure
       .input(transactionSchema)
       .mutation(async ({ ctx, input }) => {
@@ -833,11 +874,7 @@ export const financeRouter = router({
       .query(async ({ ctx, input }) => {
         const transactions = await ctx.db.financialTransaction.findMany({
           where: historyWhere(ctx.session.user.id, input),
-          orderBy: [
-            { transactionDate: "desc" },
-            { createdAt: "desc" },
-            { id: "desc" },
-          ],
+          orderBy: transactionHistoryOrder,
           include: allocationNames,
         });
         return transactions.map(serializeTransaction);

@@ -2171,3 +2171,153 @@ describe("FEAT-12 posted transaction correction", () => {
     );
   });
 });
+
+describe("FEAT-13 transaction favorites", () => {
+  const api = caller(ids.userB).finance;
+
+  async function postedReceipt() {
+    const bank = await api.accounts.create({
+      name: "Favorite Cash",
+      type: "CASH",
+    });
+    const income = await api.accounts.create({
+      name: "Favorite Income",
+      type: "INCOME",
+    });
+    const input = {
+      form: "RECEIVE_MONEY" as const,
+      sourceAccountId: bank.id,
+      transactionDate: "2026-11-27",
+      totalAmount: "20.00",
+      allocations: [
+        { kind: "INCOME" as const, accountId: income.id, amount: "20.00" },
+      ],
+    };
+    return { input, original: await api.transactions.create(input) };
+  }
+
+  it("F13-STS-01 stores one favorite and removes it without changing the ledger", async () => {
+    const { original } = await postedReceipt();
+    const history = await api.transactions.history();
+    const summary = await api.summary.get();
+    const input = { transactionId: original.id, favorite: true };
+    const writes = await Promise.allSettled([
+      api.transactions.setFavorite(input),
+      api.transactions.setFavorite(input),
+    ]);
+    expect(writes.some(({ status }) => status === "fulfilled")).toBe(true);
+    await api.transactions.setFavorite(input);
+    const reopened = caller(ids.userB).finance.transactions;
+    expect(
+      (await reopened.favorites()).filter(({ id }) => id === original.id),
+    ).toEqual([original]);
+    await reopened.setFavorite({ ...input, favorite: false });
+    await reopened.setFavorite({ ...input, favorite: false });
+    expect(await reopened.favorites()).not.toContainEqual(original);
+    expect(await reopened.history()).toEqual(history);
+    expect(await api.summary.get()).toEqual(summary);
+  });
+
+  it("F13-STS-02 keeps favorite reads and writes owner-only", async () => {
+    const { original } = await postedReceipt();
+    const input = { transactionId: original.id, favorite: true };
+    await api.transactions.setFavorite(input);
+    const foreign = userCaller().finance.transactions;
+    await expectRejectedWithCode(foreign.setFavorite(input), "NOT_FOUND");
+    await expectRejectedWithCode(
+      api.transactions.setFavorite({
+        ...input,
+        transactionId: crypto.randomUUID(),
+      }),
+      "NOT_FOUND",
+    );
+    expect(await foreign.favorites()).not.toContainEqual(original);
+    const guest = appRouter.createCaller({ db, session: null }).finance
+      .transactions;
+    const administrator = administratorCaller().finance.transactions;
+    for (const [actor, code] of [
+      [guest, "UNAUTHORIZED"],
+      [administrator, "FORBIDDEN"],
+    ] as const) {
+      await expectRejectedWithCode(actor.setFavorite(input), code);
+      await expectRejectedWithCode(actor.favorites(), code);
+    }
+  });
+
+  it("F13-STS-03 hides replaced and voided favorites without losing correction history", async () => {
+    const first = await postedReceipt();
+    const second = await postedReceipt();
+    for (const { original } of [first, second]) {
+      await api.transactions.setFavorite({
+        transactionId: original.id,
+        favorite: true,
+      });
+    }
+    const { replacementId } = await api.transactions.correct({
+      action: "REPLACE",
+      transactionId: first.original.id,
+      replacement: first.input,
+      reason: "Correct this receipt",
+    });
+    await api.transactions.correct({
+      action: "VOID",
+      transactionId: second.original.id,
+      reason: "Remove duplicate",
+    });
+    const favoriteIds = (await api.transactions.favorites()).map(
+      ({ id }) => id,
+    );
+    for (const id of [first.original.id, second.original.id, replacementId]) {
+      expect(favoriteIds).not.toContain(id);
+    }
+    const auditIds = (await api.transactions.correctionHistory()).map(
+      ({ original }) => original.id,
+    );
+    expect(auditIds).toEqual(
+      expect.arrayContaining([first.original.id, second.original.id]),
+    );
+    await expectRejectedWithCode(
+      api.transactions.setFavorite({
+        transactionId: first.original.id,
+        favorite: true,
+      }),
+      "NOT_FOUND",
+    );
+  });
+
+  it("F13-STS-04 posts an edited copy once and validates the new allocations", async () => {
+    const { input, original } = await postedReceipt();
+    await api.transactions.setFavorite({
+      transactionId: original.id,
+      favorite: true,
+    });
+    const edited = {
+      ...input,
+      description: "Edited duplicate",
+      totalAmount: "12.30",
+      transactionDate: "2026-11-28",
+      allocations: input.allocations.map((line) => ({
+        ...line,
+        amount: "12.30",
+      })),
+    };
+    const duplicate = await api.transactions.create(edited);
+    expect(duplicate.id).not.toBe(original.id);
+    expect(duplicate).toMatchObject({
+      totalAmount: "12.30",
+      transactionDate: edited.transactionDate,
+    });
+    await expectRejectedWithCode(
+      api.transactions.create({ ...edited, totalAmount: "12.31" }),
+      "BAD_REQUEST",
+    );
+    expect(
+      await api.transactions.history({ accountId: input.sourceAccountId }),
+    ).toEqual([duplicate, original]);
+    expect(await api.transactions.favorites()).toContainEqual(original);
+    expect(await api.transactions.favorites()).not.toContainEqual(duplicate);
+    expect(
+      await api.accounts.get({ accountId: input.sourceAccountId }),
+    ).toMatchObject({ balance: "32.30" });
+  });
+});
