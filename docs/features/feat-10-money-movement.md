@@ -2,7 +2,7 @@
 
 - Issue [#85](https://github.com/CPE334-Pockit/Pockit/issues/85), Sprint 2 [#82](https://github.com/CPE334-Pockit/Pockit/issues/82)
 - Branch `feature/money-movement` from `staging-2` at `c5799b1`. PR target `staging-2`.
-- Status: proposed for teammate review. This document records new policy choices for the expanded workflows; they require a recorded decision before implementation.
+- Status: contract accepted for implementation following [PR #98](https://github.com/CPE334-Pockit/Pockit/pull/98). The [teammate review](https://github.com/CPE334-Pockit/Pockit/pull/98#issuecomment-7202656855) confirms the balance rules and requests the Lab 7 exception below.
 - References: [SRS](../requirements/srs.md), [feature inventory](../requirements/feature-inventory.md), [System-Level SDS](../architecture/system-level-sds.md), [Sprint 1 money and date policy](../adr/0001-sprint1-money-and-date-policies.md), and [FEAT-09 Account lifecycle](feat-09-account-lifecycle.md).
 
 ## Feature-Level SDS
@@ -26,15 +26,15 @@ The selected Account changes exactly once by the total. For `PAYMENT_CHARGE`, su
 
 Only Income and Expense lines contribute to their respective totals. For a Cash-to-Cash transfer, the transfer portion leaves one Cash Account and enters the other by the exact same amount. For a card-funded Cash allocation, debt rises on the selected Loan Taken Account and Cash rises on the counterpart. Cash balances include both their selected-Account effects and applicable counterpart allocations. Keep both loan balances available through account and summary reads.
 
-### Proposed boundary decisions
+### Boundary decisions
 
 - Extend ADR-0001's single-currency THB rules (OQ-01/OQ-02/OQ-07). Accept positive decimal strings up to two fractional digits, reject excess precision without rounding and calculate in integer minor units. Require one or more lines and exact equality with the total. Apply no new amount ceiling or line cap. Retain the explicit calendar date without timezone conversion.
-- Apply the full BR-02 allocation list to both allowed payment/charge sources. This permits card-funded transfers and repayments between distinct Loan Taken Accounts. Allow repeated references to the same valid counterpart and mixed kinds. Reject an allocation to the selected Account itself, including Cash self-transfers and a Loan Taken Account repaying itself.
+- Apply the full BR-02 allocation list to both allowed payment/charge sources. This permits card-funded transfers and repayments between distinct Loan Taken Accounts. Allow repeated references to valid counterparts, except that a Loan Taken-funded payment/charge must use each Expense Account at most once, including in a mixed transaction. This carries forward [Lab 7 #80](https://github.com/CPE334-Pockit/Pockit/issues/80). Reject an allocation to the selected Account itself, including Cash self-transfers and a Loan Taken Account repaying itself.
 - Extend existing insufficient-balance and repayment rules to Cash counterpart outflows and Loan Given repayments. Check the sum of all debits or reductions against each affected Account's committed position in the posting transaction. Exact depletion is valid, overdrafts and negative debt or receivables are rejected. Keep the existing posting-time balance check for explicit backdated dates. Historical as-of balances require a separate decision.
 
 ### UI, API and data specifications
 
-| Layer | Proposed behavior |
+| Layer | Behavior |
 | --- | --- |
 | UI | Expose Payment or charge and Receive money on the financial dashboard. Show an eligible selected Account and an editable list of allocation lines with kind, filtered owned counterpart and exact amount. Support adding/removing lines and display the amount left to allocate. Clear an invalid counterpart when its kind changes. Retain distinct same-name Account labels. Preserve starting balance entry and the original salary, card purchase and repayment journeys. Report server rejections without discarding the form and refresh account, summary and history reads after success. |
 | API | Reuse `finance.transactions.create` with `form`, `sourceAccountId`, `totalAmount`, `transactionDate`, optional `description` and `allocations[]` of `kind`, `accountId` and `amount`. On receive, `sourceAccountId` continues to identify the receiving Cash Account. Keep existing account, summary and history response shapes and derive labels and amounts from persisted records. |
@@ -60,6 +60,19 @@ Use an isolated PostgreSQL database and synthetic Accounts, two Users, and one A
 | F10-STS-06 | AC-F10-02 | API/database: guest, Administrator and second User attempt a mixed transaction with a missing or foreign selected/counterpart Account. Race two valid outflows that together exceed Cash, and race two repayments against the same outstanding loan. | Denials disclose no financial data. Competing writes cannot overdraw Cash or overpay loans; invalid/rejected writes leave no partial allocation. |
 | F10-STS-07 | AC-F10-01, AC-F10-02 | UI/acceptance: enter one mixed payment and one mixed receipt, change allocation kind after selecting an Account, try an incorrect split, then correct and submit. | UI shows eligible typed choices and distinct duplicate labels, presents the rejection or prevents an invalid submit, and displays persisted effects on refreshed account, summary and history views. |
 | F10-STS-08 | AC-F10-01, AC-F10-02 | Regression: run the Sprint 1 opening, salary receipt, split charge and repayment journey, plus FEAT-09 lifecycle and API ownership checks. | Existing journeys and stored records retain their behavior and privacy boundaries. |
+| F10-STS-09 | AC-F10-02 | Regression: post repeated Expense references on a Loan Taken charge and on a Cash payment. Include a mixed Loan Taken charge. | Refuse repeated Expense references only for Loan Taken funding, with no partial row or effect. Equivalent Cash allocations can post. |
+
+### Execution evidence
+
+| Revision | Command | Observed result |
+| --- | --- | --- |
+| `652e440` | `bun test packages/api/src/routers/finance.test.ts -t 'F10-STS-0[19]'` with a disposable PostgreSQL 17 `DATABASE_URL` and `NODE_ENV=test` | RED: 2 failed, 14 filtered. The old API rejected a valid mixed Cash payment, and accepted a card charge with duplicate Expense references. |
+| `69058cf` | `bun run test` with the same database and `NODE_ENV=test` | GREEN: 76 pass, 0 failed, 0 skipped on local Bun 1.3.9. Web 19, server 22, API 33, database 2. |
+| `69058cf` | `bun run check-types`, `bun run build`, targeted Biome check and `git diff origin/staging-2...HEAD --check` | All passed. Type check finished 6 tasks and build finished 2 tasks. |
+
+- **AC-F10-01:** F10-STS-01–03 are green in [finance.test.ts](../../packages/api/src/routers/finance.test.ts), including reopening the database client to retrieve persisted balances and history. The F10-STS-07 [dashboard test](../../apps/web/src/components/finance-dashboard.test.tsx) verifies both mixed submissions, filtered selections and preserving input after an API error. The live browser journey through refreshed account, summary and history reads and staging integration remain open.
+- **AC-F10-02:** F10-STS-01–06 and F10-STS-09 are green in [finance.test.ts](../../packages/api/src/routers/finance.test.ts). They verify classification, rejection, amount boundaries, ownership and concurrent reductions. The web suite also verifies the quick-card duplicate category behavior from Lab 7. F10-STS-08 ran through the existing Sprint 1 API/HTTP and FEAT-09 suites.
+- **Lab 7 integration:** A read-only merge comparison with `lab7` at `a0bbe87` identified overlapping edits in CI, the finance router and the dashboard. When bringing the separately reviewed Lab 7 release into Sprint 2, preserve both PR triggers, the expanded transaction validation and the duplicate-Expense rule and UI safeguards. Rerun both sets of tests on that integration commit.
 
 ## Definition of Done and evidence
 
