@@ -1197,9 +1197,10 @@ describe("FEAT-10 expanded money movement", () => {
         "100.00",
       ]);
       const summary = await read.summary.get();
-      expect(Number(summary.expenseTotal) - Number(before.expenseTotal)).toBe(
-        40,
-      );
+      expect(
+        BigInt(summary.expenseTotal.replace(".", "")) -
+          BigInt(before.expenseTotal.replace(".", "")),
+      ).toBe(4000n);
       expect(
         BigInt(summary.incomeTotal.replace(".", "")) -
           BigInt(before.incomeTotal.replace(".", "")),
@@ -1269,6 +1270,261 @@ describe("FEAT-10 expanded money movement", () => {
     });
     expect(await api.accounts.get({ accountId: expense.id })).toMatchObject({
       categoryTotal: "2.00",
+    });
+  });
+
+  it("F10-STS-03 posts card-funded transfers and repayments to another card", async () => {
+    const api = finance();
+    const [source, debt, cash, expense] = await Promise.all([
+      api.accounts.create({ name: "Funding card", type: "LOAN_TAKEN" }),
+      api.accounts.create({
+        name: "Repaid card",
+        type: "LOAN_TAKEN",
+        openingBalance: "0.02",
+      }),
+      api.accounts.create({ name: "Cash destination", type: "CASH" }),
+      api.accounts.create({ name: "Card expense", type: "EXPENSE" }),
+    ]);
+    await api.transactions.create({
+      form: "PAYMENT_CHARGE",
+      sourceAccountId: source.id,
+      totalAmount: "0.03",
+      transactionDate: date,
+      allocations: [
+        { kind: "EXPENSE", accountId: expense.id, amount: "0.01" },
+        { kind: "LOAN_TAKEN_REPAYMENT", accountId: debt.id, amount: "0.01" },
+        { kind: "TRANSFER_TO_CASH", accountId: cash.id, amount: "0.01" },
+      ],
+    });
+    const persisted = await api.accounts.list();
+    expect(persisted).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: source.id, balance: "0.03" }),
+        expect.objectContaining({ id: debt.id, balance: "0.01" }),
+        expect.objectContaining({ id: cash.id, balance: "0.01" }),
+        expect.objectContaining({ id: expense.id, categoryTotal: "0.01" }),
+      ]),
+    );
+  });
+
+  it("F10-STS-04/06 denies mismatched, self and foreign allocations without partial writes", async () => {
+    const api = finance();
+    const [cash, card, income] = await Promise.all([
+      api.accounts.create({
+        name: "Invalid case cash",
+        type: "CASH",
+        openingBalance: "10",
+      }),
+      api.accounts.create({
+        name: "Invalid case card",
+        type: "LOAN_TAKEN",
+        openingBalance: "10",
+      }),
+      api.accounts.create({ name: "Invalid case income", type: "INCOME" }),
+    ]);
+    const base = {
+      form: "RECEIVE_MONEY",
+      sourceAccountId: cash.id,
+      totalAmount: "1.00",
+      transactionDate: date,
+      allocations: [{ kind: "INCOME", accountId: income.id, amount: "1.00" }],
+    } as const;
+    const post = { ...base, allocations: [...base.allocations] };
+    const before = await api.accounts.list();
+    const history = await api.transactions.history();
+    const allocationCount = await db.allocationLine.count({
+      where: { ownerId: ids.userB },
+    });
+    for (const input of [
+      { ...post, allocations: [] },
+      { ...post, totalAmount: "1.01" },
+      { ...post, totalAmount: "1.001" },
+      { ...post, transactionDate: "2026-02-30" },
+      {
+        ...post,
+        allocations: [
+          { kind: "INCOME", accountId: income.id, amount: "-1.00" },
+        ],
+      },
+      { ...post, sourceAccountId: card.id },
+      {
+        ...post,
+        allocations: [
+          {
+            kind: "TRANSFER_TO_CASH",
+            accountId: accounts.userBBank,
+            amount: "1.00",
+          },
+        ],
+      },
+      {
+        ...post,
+        allocations: [{ kind: "INCOME", accountId: card.id, amount: "1.00" }],
+      },
+      {
+        ...post,
+        allocations: [
+          { kind: "TRANSFER_FROM_CASH", accountId: cash.id, amount: "1.00" },
+        ],
+      },
+      {
+        ...post,
+        form: "PAYMENT_CHARGE",
+        sourceAccountId: card.id,
+        allocations: [
+          { kind: "LOAN_TAKEN_REPAYMENT", accountId: card.id, amount: "1.00" },
+        ],
+      },
+      {
+        ...post,
+        allocations: [
+          {
+            kind: "TRANSFER_FROM_CASH",
+            accountId: accounts.bank,
+            amount: "1.00",
+          },
+        ],
+      },
+    ] as const) {
+      await expectRejectedWithCode(
+        api.transactions.create({
+          ...input,
+          allocations: [...input.allocations],
+        }),
+        "BAD_REQUEST",
+      );
+    }
+    const mixedForeignCounterpart = {
+      ...post,
+      totalAmount: "2.00",
+      allocations: [
+        ...post.allocations,
+        {
+          kind: "TRANSFER_FROM_CASH" as const,
+          accountId: accounts.bank,
+          amount: "1.00",
+        },
+      ],
+    };
+    await expectRejectedWithCode(
+      api.transactions.create(mixedForeignCounterpart),
+      "BAD_REQUEST",
+    );
+    await expectRejectedWithCode(
+      api.transactions.create({ ...post, sourceAccountId: accounts.bank }),
+      "NOT_FOUND",
+    );
+    await expectRejectedWithCode(
+      api.transactions.create({ ...post, sourceAccountId: "unknown" }),
+      "NOT_FOUND",
+    );
+    await expectRejectedWithCode(
+      appRouter
+        .createCaller({ db, session: null })
+        .finance.transactions.create(mixedForeignCounterpart),
+      "UNAUTHORIZED",
+    );
+    await expectRejectedWithCode(
+      administratorCaller().finance.transactions.create(
+        mixedForeignCounterpart,
+      ),
+      "FORBIDDEN",
+    );
+    expect(await api.accounts.list()).toEqual(before);
+    expect(await api.transactions.history()).toEqual(history);
+    expect(
+      await db.allocationLine.count({ where: { ownerId: ids.userB } }),
+    ).toBe(allocationCount);
+  });
+
+  it("F10-STS-05 aggregates repeated reductions and permits exact depletion", async () => {
+    const api = finance();
+    const receiver = await api.accounts.create({
+      name: "Limits bank",
+      type: "CASH",
+      openingBalance: "3.00",
+    });
+    for (const [type, kind, form] of [
+      ["CASH", "TRANSFER_FROM_CASH", "RECEIVE_MONEY"],
+      ["LOAN_GIVEN", "LOAN_GIVEN_REPAYMENT", "RECEIVE_MONEY"],
+      ["LOAN_TAKEN", "LOAN_TAKEN_REPAYMENT", "PAYMENT_CHARGE"],
+    ] as const) {
+      const target = await api.accounts.create({
+        name: `Limits ${type}`,
+        type,
+        openingBalance: "1.00",
+      });
+      const input = {
+        form,
+        sourceAccountId: receiver.id,
+        transactionDate: date,
+        totalAmount: "1.01",
+        allocations: [
+          { kind, accountId: target.id, amount: "0.50" },
+          { kind, accountId: target.id, amount: "0.51" },
+        ],
+      };
+      await expectRejectedWithCode(
+        api.transactions.create(input),
+        "BAD_REQUEST",
+      );
+      expect(await api.accounts.get({ accountId: target.id })).toMatchObject({
+        balance: "1.00",
+      });
+      await api.transactions.create({
+        ...input,
+        totalAmount: "1.00",
+        allocations: [
+          { kind, accountId: target.id, amount: "0.50" },
+          { kind, accountId: target.id, amount: "0.50" },
+        ],
+      });
+      expect(await api.accounts.get({ accountId: target.id })).toMatchObject({
+        balance: "0.00",
+      });
+    }
+  });
+
+  it("F10-STS-06 prevents concurrent Cash overdrafts and Loan Given overpayments", async () => {
+    const api = finance();
+    const bank = await api.accounts.create({
+      name: "Race receiver",
+      type: "CASH",
+    });
+    for (const [type, kind] of [
+      ["CASH", "TRANSFER_FROM_CASH"],
+      ["LOAN_GIVEN", "LOAN_GIVEN_REPAYMENT"],
+    ] as const) {
+      const target = await api.accounts.create({
+        name: `Race ${type}`,
+        type,
+        openingBalance: "1.00",
+      });
+      const input = {
+        form: "RECEIVE_MONEY" as const,
+        sourceAccountId: bank.id,
+        totalAmount: "0.75",
+        transactionDate: date,
+        allocations: [{ kind, accountId: target.id, amount: "0.75" }],
+      };
+      const results = await Promise.allSettled([
+        api.transactions.create(input),
+        api.transactions.create(input),
+      ]);
+      expect(results.map(({ status }) => status).sort()).toEqual([
+        "fulfilled",
+        "rejected",
+      ]);
+      expect(await api.accounts.get({ accountId: target.id })).toMatchObject({
+        balance: "0.25",
+      });
+      const lines = await db.allocationLine.count({
+        where: { accountId: target.id, ownerId: ids.userB },
+      });
+      expect(lines).toBe(1);
+    }
+    expect(await api.accounts.get({ accountId: bank.id })).toMatchObject({
+      balance: "1.50",
     });
   });
 });

@@ -422,4 +422,124 @@ describe("finance dashboard", () => {
       ).disabled,
     ).toBe(true);
   });
+
+  it("F10-STS-07 posts mixed forms and resets incompatible counterpart selections", async () => {
+    createTransaction.mockClear();
+    const bank = accounts[0];
+    if (!bank) throw new Error("Expected a Cash fixture");
+    const view = renderDashboard([
+      ...accounts,
+      { ...bank, id: "cash-other", name: "Wallet" },
+    ]);
+    const select = (label: string, value: string) => {
+      fireEvent.change(view.getByLabelText(label), { target: { value } });
+    };
+    const enter = (label: string, value: string) => {
+      fireEvent.input(view.getByLabelText(label), { target: { value } });
+    };
+    fireEvent.click(view.getByRole("button", { name: /payment or charge/i }));
+    select("Paid from", "cash-main");
+    enter("Transaction total", "3.00");
+    enter("Transaction date", "2026-11-27");
+    select("Allocation account 1", "expense-dining");
+    select("Allocation type 1", "TRANSFER_TO_CASH");
+    expect(
+      (view.getByLabelText("Allocation account 1") as HTMLSelectElement).value,
+    ).toBe("");
+    expect(view.queryByRole("option", { name: "Dining" })).toBeNull();
+    select("Allocation account 1", "cash-other");
+    enter("Allocation amount 1", "2.00");
+    fireEvent.click(view.getByRole("button", { name: "Add allocation" }));
+    select("Allocation account 2", "expense-dining");
+    enter("Allocation amount 2", "0.50");
+    const payment = view.getByRole("button", {
+      name: "Record payment or charge",
+    }) as HTMLButtonElement;
+    expect(payment.disabled).toBe(true);
+    enter("Allocation amount 2", "1.00");
+    fireEvent.click(payment);
+    await waitFor(() =>
+      expect(createTransaction).toHaveBeenCalledWith(
+        expect.objectContaining({
+          form: "PAYMENT_CHARGE",
+          sourceAccountId: "cash-main",
+          totalAmount: "3.00",
+          allocations: [
+            {
+              kind: "TRANSFER_TO_CASH",
+              accountId: "cash-other",
+              amount: "2.00",
+            },
+            { kind: "EXPENSE", accountId: "expense-dining", amount: "1.00" },
+          ],
+        }),
+      ),
+    );
+
+    fireEvent.click(view.getByRole("button", { name: /^receive money/i }));
+    select("Receiving account", "cash-main");
+    enter("Transaction total", "3.00");
+    enter("Transaction date", "2026-11-27");
+    select("Allocation account 1", "income-salary");
+    enter("Allocation amount 1", "1.00");
+    fireEvent.click(view.getByRole("button", { name: "Add allocation" }));
+    select("Allocation type 2", "TRANSFER_FROM_CASH");
+    select("Allocation account 2", "cash-other");
+    enter("Allocation amount 2", "2.00");
+    const receipt = view.getByRole("button", { name: "Record receipt" });
+    createTransaction.mockRejectedValueOnce(new Error("Cash balance changed"));
+    fireEvent.click(receipt);
+    expect((await view.findByRole("alert")).textContent).toBe(
+      "Cash balance changed",
+    );
+    expect(
+      (view.getByLabelText("Allocation amount 2") as HTMLInputElement).value,
+    ).toBe("2.00");
+    fireEvent.click(receipt);
+    await waitFor(() => {
+      expect(createTransaction).toHaveBeenCalledTimes(3);
+      expect(view.queryByLabelText("Allocation amount 2")).toBeNull();
+      expect(createTransaction).toHaveBeenCalledWith(
+        expect.objectContaining({
+          form: "RECEIVE_MONEY",
+          sourceAccountId: "cash-main",
+          totalAmount: "3.00",
+          allocations: [
+            { kind: "INCOME", accountId: "income-salary", amount: "1.00" },
+            {
+              kind: "TRANSFER_FROM_CASH",
+              accountId: "cash-other",
+              amount: "2.00",
+            },
+          ],
+        }),
+      );
+    });
+  });
+
+  it("F10-STS-09 preserves the Lab 7 quick-card purchase safeguards", () => {
+    const view = renderDashboard();
+    fireEvent.click(view.getByRole("button", { name: /card purchase/i }));
+    const addCategory = view.getByRole("button", {
+      name: "Add category",
+    }) as HTMLButtonElement;
+    expect(addCategory.disabled).toBe(true);
+    fireEvent.change(view.getByLabelText("Expense category 2"), {
+      target: { value: "expense-dining" },
+    });
+    expect(view.getByRole("alert").textContent).toBe(
+      "Use each expense category only once.",
+    );
+    expect(
+      (
+        view.getByRole("button", {
+          name: /record card purchase/i,
+        }) as HTMLButtonElement
+      ).disabled,
+    ).toBe(true);
+    fireEvent.click(addCategory);
+    expect(
+      (view.getByLabelText("Expense category 3") as HTMLSelectElement).value,
+    ).toBe("expense-groceries");
+  });
 });

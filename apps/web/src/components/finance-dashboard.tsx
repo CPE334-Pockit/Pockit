@@ -1,3 +1,9 @@
+import {
+  type AllocationKind,
+  allocationKinds,
+  allocationRules,
+  hasRepeatedExpenseAccount,
+} from "@Pockit/api/finance/allocations";
 import type { AppRouter } from "@Pockit/api/routers/index";
 import { Button } from "@Pockit/ui/components/button";
 import {
@@ -38,7 +44,13 @@ type Summary = Outputs["finance"]["summary"]["get"];
 type TransactionInput = Inputs["finance"]["transactions"]["create"];
 type OpeningBalanceInput = Inputs["finance"]["accounts"]["setOpeningBalance"];
 
-type Action = "opening" | "income" | "purchase" | "repayment";
+type Action =
+  | "opening"
+  | "income"
+  | "purchase"
+  | "repayment"
+  | "payment"
+  | "receipt";
 type AllocationDraft = { id: string; accountId: string; amount: string };
 
 type FinanceDashboardProps = {
@@ -65,6 +77,14 @@ const actionDetails: Record<Action, { label: string; hint: string }> = {
   purchase: {
     label: "Card purchase",
     hint: "Split a card charge across categories.",
+  },
+  payment: {
+    label: "Payment or charge",
+    hint: "Split an outgoing amount across several accounts.",
+  },
+  receipt: {
+    label: "Receive money",
+    hint: "Split an incoming amount across several sources.",
   },
   repayment: {
     label: "Repay card",
@@ -261,6 +281,240 @@ function AmountField({
   );
 }
 
+function MoneyMovementForm({
+  form,
+  accounts,
+  busy,
+  onPost,
+}: {
+  form: TransactionInput["form"];
+  accounts: Account[];
+  busy: boolean;
+  onPost: (input: TransactionInput) => Promise<void>;
+}) {
+  const isPayment = form === "PAYMENT_CHARGE";
+  const initialKind = isPayment ? "EXPENSE" : "INCOME";
+  type Line = AllocationDraft & { kind: AllocationKind };
+  const [sourceSelection, setSource] = useState("");
+  const [total, setTotal] = useState("");
+  const [date, setDate] = useState("");
+  const [description, setDescription] = useState("");
+  const [lines, setLines] = useState<Line[]>([
+    { id: "initial", kind: initialKind, accountId: "", amount: "" },
+  ]);
+  const [error, setError] = useState("");
+  const availableSources = accounts.filter(
+    ({ type }) => type === "CASH" || (isPayment && type === "LOAN_TAKEN"),
+  );
+  const source = availableSources.find(({ id }) => id === sourceSelection);
+  const allowedKinds = allocationKinds.filter(
+    (kind) => allocationRules[kind].form === form,
+  );
+  const lineOptions = lines.map(({ kind }) =>
+    accounts.filter(
+      ({ id, type }) =>
+        id !== source?.id && type === allocationRules[kind].accountType,
+    ),
+  );
+  const duplicateExpense =
+    source?.type === "LOAN_TAKEN" && hasRepeatedExpenseAccount(lines);
+  const remaining =
+    (toMinorUnits(total) ?? 0n) -
+    lines.reduce((sum, { amount }) => sum + (toMinorUnits(amount) ?? 0n), 0n);
+  const canPost =
+    source &&
+    date &&
+    !duplicateExpense &&
+    allocationsMatch(total, lines) &&
+    lines.every(({ accountId }, index) =>
+      lineOptions[index]?.some(({ id }) => id === accountId),
+    );
+
+  function editLine(id: string, changes: Partial<Omit<Line, "id">>) {
+    setLines((current) =>
+      current.map((line) => (line.id === id ? { ...line, ...changes } : line)),
+    );
+  }
+
+  async function post() {
+    if (busy || !canPost || !source) return;
+    setError("");
+    try {
+      await onPost({
+        form,
+        sourceAccountId: source.id,
+        totalAmount: total,
+        transactionDate: date,
+        description: description || undefined,
+        allocations: lines.map(({ accountId, amount, kind }) => ({
+          accountId,
+          amount,
+          kind,
+        })),
+      });
+      setTotal("");
+      setDate("");
+      setDescription("");
+      setLines([
+        { id: "initial", kind: initialKind, accountId: "", amount: "" },
+      ]);
+    } catch (error) {
+      setError(
+        error instanceof Error
+          ? error.message
+          : "The transaction could not be saved.",
+      );
+    }
+  }
+
+  return (
+    <form
+      className="border-border/70 border-t pt-5"
+      onSubmit={(event) => {
+        event.preventDefault();
+        void post();
+      }}
+    >
+      <fieldset className="flex min-w-0 flex-col gap-4" disabled={busy}>
+        <SelectField
+          id="movement-account"
+          label={isPayment ? "Paid from" : "Receiving account"}
+          value={sourceSelection}
+          onChange={(accountId) => {
+            setSource(accountId);
+            setLines((current) =>
+              current.map((line) =>
+                line.accountId === accountId
+                  ? { ...line, accountId: "" }
+                  : line,
+              ),
+            );
+          }}
+          options={availableSources}
+          placeholder="Choose an account"
+        />
+        <div className="grid gap-4 sm:grid-cols-2">
+          <AmountField
+            id="movement-total"
+            label="Transaction total"
+            value={total}
+            onChange={setTotal}
+          />
+          <DateField value={date} onChange={setDate} />
+        </div>
+        <Field id="movement-description" label="Description (optional)">
+          <Input
+            id="movement-description"
+            value={description}
+            onChange={(event) => setDescription(event.target.value)}
+          />
+        </Field>
+        <p className="text-muted-foreground text-sm tabular-nums">
+          Remaining to allocate: {formatMoney(formatMinorUnits(remaining))}
+        </p>
+        {duplicateExpense ? (
+          <p role="alert" className="text-destructive text-sm">
+            Use each expense category only once.
+          </p>
+        ) : null}
+        {lines.map((line, index) => (
+          <div
+            key={line.id}
+            className="border-border grid gap-3 border p-3 sm:grid-cols-2"
+          >
+            <Field
+              id={`movement-kind-${index}`}
+              label={`Allocation type ${index + 1}`}
+            >
+              <select
+                id={`movement-kind-${index}`}
+                value={line.kind}
+                className="border-input bg-background h-9 w-full border px-3 text-sm"
+                onChange={(event) =>
+                  editLine(line.id, {
+                    kind: event.target.value as AllocationKind,
+                    accountId: "",
+                  })
+                }
+              >
+                {allowedKinds.map((kind) => (
+                  <option key={kind} value={kind}>
+                    {allocationRules[kind].label}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <SelectField
+              id={`movement-counterpart-${index}`}
+              label={`Allocation account ${index + 1}`}
+              value={line.accountId}
+              onChange={(accountId) => editLine(line.id, { accountId })}
+              options={lineOptions[index] ?? []}
+              placeholder="Choose an account"
+            />
+            <AmountField
+              id={`movement-amount-${index}`}
+              label={`Allocation amount ${index + 1}`}
+              value={line.amount}
+              onChange={(amount) => editLine(line.id, { amount })}
+            />
+            {lines.length > 1 ? (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="self-end"
+                aria-label={`Remove allocation ${index + 1}`}
+                onClick={() =>
+                  setLines((current) =>
+                    current.filter(({ id }) => id !== line.id),
+                  )
+                }
+              >
+                Remove
+              </Button>
+            ) : null}
+          </div>
+        ))}
+        <Button
+          type="button"
+          variant="outline"
+          className="self-start"
+          onClick={() =>
+            setLines((current) => [
+              ...current,
+              {
+                id: crypto.randomUUID(),
+                kind: initialKind,
+                accountId: "",
+                amount: "",
+              },
+            ])
+          }
+        >
+          <Plus data-icon="inline-start" aria-hidden="true" /> Add allocation
+        </Button>
+        {error ? (
+          <p role="alert" className="text-destructive text-sm">
+            {error}
+          </p>
+        ) : null}
+        <Button
+          type="submit"
+          disabled={!canPost || busy}
+          className="self-start"
+        >
+          {busy
+            ? "Saving entry…"
+            : isPayment
+              ? "Record payment or charge"
+              : "Record receipt"}
+        </Button>
+      </fieldset>
+    </form>
+  );
+}
+
 function ActionButton({
   action,
   active,
@@ -391,7 +645,20 @@ export function FinanceDashboard({
       .filter((account) => account.type === "LOAN_TAKEN")
       .map((account) => account.balance),
   );
+  const selectedPurchaseCategories = new Set(
+    purchaseAllocations.map(({ accountId }) => accountId).filter(Boolean),
+  );
+  const unusedPurchaseCategory = expenseAccounts.find(
+    ({ id }) => !selectedPurchaseCategories.has(id),
+  );
+  const hasDuplicatePurchaseCategory = hasRepeatedExpenseAccount(
+    purchaseAllocations.map(({ accountId }) => ({
+      accountId,
+      kind: "EXPENSE",
+    })),
+  );
   const canPostPurchase =
+    !hasDuplicatePurchaseCategory &&
     allocationsMatch(purchaseAmount, purchaseAllocations) &&
     purchaseAllocations.length > 0 &&
     purchaseAllocations.every(({ accountId }) =>
@@ -574,7 +841,33 @@ export function FinanceDashboard({
                     icon={<ArrowUpRight className="size-4" />}
                     onClick={() => setActiveAction("repayment")}
                   />
+                  <ActionButton
+                    action="payment"
+                    active={activeAction === "payment"}
+                    icon={<ArrowUpRight className="size-4" />}
+                    onClick={() => setActiveAction("payment")}
+                  />
+                  <ActionButton
+                    action="receipt"
+                    active={activeAction === "receipt"}
+                    icon={<ArrowDownLeft className="size-4" />}
+                    onClick={() => setActiveAction("receipt")}
+                  />
                 </div>
+
+                {activeAction === "payment" || activeAction === "receipt" ? (
+                  <MoneyMovementForm
+                    key={activeAction}
+                    form={
+                      activeAction === "payment"
+                        ? "PAYMENT_CHARGE"
+                        : "RECEIVE_MONEY"
+                    }
+                    accounts={accounts}
+                    busy={isBusy}
+                    onPost={onCreateTransaction}
+                  />
+                ) : null}
 
                 {activeAction === "opening" && (
                   <form
@@ -749,6 +1042,7 @@ export function FinanceDashboard({
                     className="border-border/70 grid gap-4 border-t pt-5"
                     onSubmit={(event) => {
                       event.preventDefault();
+                      if (!canPostPurchase) return;
                       void submit(
                         onCreateTransaction({
                           form: "PAYMENT_CHARGE",
@@ -821,6 +1115,11 @@ export function FinanceDashboard({
                           / {formatMoney(purchaseAmount || "0.00")}
                         </span>
                       </div>
+                      {hasDuplicatePurchaseCategory ? (
+                        <p role="alert" className="text-destructive text-sm">
+                          Use each expense category only once.
+                        </p>
+                      ) : null}
                       {purchaseAllocations.map((allocation, index) => (
                         <div
                           key={allocation.id}
@@ -882,17 +1181,18 @@ export function FinanceDashboard({
                         type="button"
                         variant="outline"
                         size="sm"
-                        disabled={isBusy || expenseAccounts.length === 0}
-                        onClick={() =>
+                        disabled={isBusy || !unusedPurchaseCategory}
+                        onClick={() => {
+                          if (!unusedPurchaseCategory) return;
                           setPurchaseAllocations((current) => [
                             ...current,
                             {
                               id: crypto.randomUUID(),
-                              accountId: expenseAccounts[0]?.id ?? "",
+                              accountId: unusedPurchaseCategory.id,
                               amount: "",
                             },
-                          ])
-                        }
+                          ]);
+                        }}
                       >
                         <Plus aria-hidden="true" />
                         Add category

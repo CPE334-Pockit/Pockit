@@ -3,23 +3,17 @@ import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import type { Context } from "../context";
 import {
+  allocationKinds,
+  allocationRules,
+  hasRepeatedExpenseAccount,
+} from "../finance/allocations";
+import {
   formatCalendarDate,
   formatMinorUnits,
   parseCalendarDate,
   parseMoneyToMinorUnits,
 } from "../finance/value";
 import { router, userProcedure } from "../index";
-
-const allocationKinds = [
-  "EXPENSE",
-  "LOAN_TAKEN_REPAYMENT",
-  "LOAN_GIVEN_LENDING",
-  "TRANSFER_TO_CASH",
-  "INCOME",
-  "LOAN_GIVEN_REPAYMENT",
-  "LOAN_TAKEN_BORROWING",
-  "TRANSFER_FROM_CASH",
-] as const;
 
 const accountIdSchema = z.string().min(1);
 const accountLookupSchema = z.object({ accountId: accountIdSchema });
@@ -165,16 +159,32 @@ async function accountBalanceMinorUnits(
   const opening = BigInt(account.openingBalanceMinorUnits ?? "0");
 
   if (account.type === "CASH") {
-    const transactions = await client.financialTransaction.findMany({
-      where: { ownerId: account.ownerId, sourceAccountId: account.id },
-      select: { form: true, totalMinorUnits: true },
-    });
-    return transactions.reduce((balance, transaction) => {
+    const [transactions, transfers] = await Promise.all([
+      client.financialTransaction.findMany({
+        where: { ownerId: account.ownerId, sourceAccountId: account.id },
+        select: { form: true, totalMinorUnits: true },
+      }),
+      client.allocationLine.findMany({
+        where: {
+          ownerId: account.ownerId,
+          accountId: account.id,
+          kind: { in: ["TRANSFER_TO_CASH", "TRANSFER_FROM_CASH"] },
+        },
+        select: { kind: true, amountMinorUnits: true },
+      }),
+    ]);
+    const selectedBalance = transactions.reduce((balance, transaction) => {
       const amount = BigInt(transaction.totalMinorUnits);
       return transaction.form === "RECEIVE_MONEY"
         ? balance + amount
         : balance - amount;
     }, opening);
+    return transfers.reduce((balance, transfer) => {
+      const amount = BigInt(transfer.amountMinorUnits);
+      return transfer.kind === "TRANSFER_TO_CASH"
+        ? balance + amount
+        : balance - amount;
+    }, selectedBalance);
   }
 
   if (account.type === "LOAN_TAKEN") {
@@ -316,73 +326,79 @@ async function validateTransaction(
   input: z.infer<typeof transactionSchema>,
   parsed: ReturnType<typeof parseTransactionInput>,
 ) {
-  const { totalMinorUnits, date, allocations } = parsed;
+  const { totalMinorUnits, allocations } = parsed;
   const source = await findOwnedAccount(client, ownerId, input.sourceAccountId);
+  if (
+    source.type !== "CASH" &&
+    !(input.form === "PAYMENT_CHARGE" && source.type === "LOAN_TAKEN")
+  ) {
+    return badRequest(
+      "This Transaction form is not available for the selected Account type",
+    );
+  }
+  if (source.currencyCode !== "THB") {
+    return badRequest("Transactions support THB Accounts only");
+  }
+
   const distinctAccountIds = [
     ...new Set(allocations.map(({ accountId }) => accountId)),
   ];
   const destinations = await client.financialAccount.findMany({
     where: { ownerId, id: { in: distinctAccountIds } },
   });
-  if (destinations.length !== distinctAccountIds.length) {
-    return badRequest("An allocation Account is unavailable");
-  }
   const destinationById = new Map(
     destinations.map((account) => [account.id, account]),
   );
+  const reductions = new Map<
+    string,
+    { account: AccountRecord; amount: bigint }
+  >();
+  if (input.form === "PAYMENT_CHARGE" && source.type === "CASH") {
+    reductions.set(source.id, { account: source, amount: totalMinorUnits });
+  }
 
-  for (const allocation of allocations) {
-    const destination = destinationById.get(allocation.accountId);
+  for (const { accountId, kind, amountMinorUnits } of allocations) {
+    const destination = destinationById.get(accountId);
     if (!destination) {
       return badRequest("An allocation Account is unavailable");
     }
+    if (destination.id === source.id) {
+      return badRequest("Choose a different Account for each allocation");
+    }
     if (destination.currencyCode !== "THB") {
-      return badRequest("Sprint 1 Transactions support THB Accounts only");
+      return badRequest("Transactions support THB Accounts only");
+    }
+    const rule = allocationRules[kind];
+    if (rule.form !== input.form || rule.accountType !== destination.type) {
+      return badRequest("Allocation type does not match the form and Account");
+    }
+    if (
+      kind === "TRANSFER_FROM_CASH" ||
+      kind === "LOAN_TAKEN_REPAYMENT" ||
+      kind === "LOAN_GIVEN_REPAYMENT"
+    ) {
+      reductions.set(accountId, {
+        account: destination,
+        amount: (reductions.get(accountId)?.amount ?? 0n) + amountMinorUnits,
+      });
     }
   }
-  if (source.currencyCode !== "THB") {
-    return badRequest("Sprint 1 Transactions support THB Accounts only");
+  if (source.type === "LOAN_TAKEN" && hasRepeatedExpenseAccount(allocations)) {
+    return badRequest("Use each expense category only once.");
   }
 
-  const isIncome = allocations.every(
-    (allocation) =>
-      allocation.kind === "INCOME" &&
-      destinationById.get(allocation.accountId)?.type === "INCOME",
-  );
-  const isExpense = allocations.every(
-    (allocation) =>
-      allocation.kind === "EXPENSE" &&
-      destinationById.get(allocation.accountId)?.type === "EXPENSE",
-  );
-  const repayments = allocations.every(
-    (allocation) =>
-      allocation.kind === "LOAN_TAKEN_REPAYMENT" &&
-      destinationById.get(allocation.accountId)?.type === "LOAN_TAKEN",
-  );
-
-  if (input.form === "RECEIVE_MONEY") {
-    if (source.type !== "CASH" || !isIncome) {
+  for (const { account, amount } of reductions.values()) {
+    if (amount > (await accountBalanceMinorUnits(client, account))) {
       return badRequest(
-        "Receive-money Transactions require a Cash Account and Income allocations",
+        account.type === "CASH"
+          ? "Cash outflow cannot exceed the available balance"
+          : account.type === "LOAN_GIVEN"
+            ? "Loan repayment cannot exceed the outstanding receivable"
+            : "Loan repayment cannot exceed outstanding debt",
       );
     }
-  } else if (source.type === "LOAN_TAKEN") {
-    if (!isExpense) {
-      return badRequest("Card charges require Expense allocations");
-    }
-  } else if (source.type === "CASH") {
-    if (!repayments) {
-      return badRequest(
-        "Cash payments in Sprint 1 must repay Loan Taken Accounts",
-      );
-    }
-  } else {
-    return badRequest(
-      "This Transaction form is not available for the selected Account type",
-    );
   }
-
-  return { source, destinationById, allocations, totalMinorUnits, date };
+  return source;
 }
 
 export const financeRouter = router({
@@ -550,48 +566,8 @@ export const financeRouter = router({
         const parsed = parseTransactionInput(input);
         return serializable(ctx.db, async (tx) => {
           const ownerId = ctx.session.user.id;
-          const validated = await validateTransaction(
-            tx,
-            ownerId,
-            input,
-            parsed,
-          );
-          const {
-            source,
-            destinationById,
-            allocations,
-            totalMinorUnits,
-            date,
-          } = validated;
-
-          if (input.form === "PAYMENT_CHARGE" && source.type === "CASH") {
-            const cashBalance = await accountBalanceMinorUnits(tx, source);
-            if (cashBalance < totalMinorUnits) {
-              return badRequest(
-                "Cash outflow cannot exceed the available balance",
-              );
-            }
-            const repaymentsByAccount = new Map<string, bigint>();
-            for (const allocation of allocations) {
-              repaymentsByAccount.set(
-                allocation.accountId,
-                (repaymentsByAccount.get(allocation.accountId) ?? 0n) +
-                  allocation.amountMinorUnits,
-              );
-            }
-            for (const [accountId, repayment] of repaymentsByAccount) {
-              const destination = destinationById.get(accountId);
-              if (!destination) {
-                return badRequest("A repayment Account is unavailable");
-              }
-              const debt = await accountBalanceMinorUnits(tx, destination);
-              if (repayment > debt) {
-                return badRequest(
-                  "Loan repayment cannot exceed outstanding debt",
-                );
-              }
-            }
-          }
+          const source = await validateTransaction(tx, ownerId, input, parsed);
+          const { allocations, totalMinorUnits, date } = parsed;
 
           const transaction = await tx.financialTransaction.create({
             data: {
