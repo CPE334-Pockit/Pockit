@@ -42,6 +42,17 @@ type Account = Outputs["finance"]["accounts"]["list"][number];
 type Transaction = Outputs["finance"]["transactions"]["history"][number];
 type Summary = Outputs["finance"]["summary"]["get"];
 type TransactionInput = Inputs["finance"]["transactions"]["create"];
+export type HistoryFilters = NonNullable<
+  Inputs["finance"]["transactions"]["history"]
+>;
+type HistorySearch = {
+  apply: (input?: HistoryFilters) => void;
+  transactions: Transaction[];
+  filtered: boolean;
+  pending: boolean;
+  error?: string;
+  retry: () => void;
+};
 type OpeningBalanceInput = Inputs["finance"]["accounts"]["setOpeningBalance"];
 
 type Action =
@@ -57,6 +68,7 @@ type FinanceDashboardProps = {
   name: string;
   accounts: Account[];
   transactions: Transaction[];
+  historySearch?: HistorySearch;
   summary: Summary;
   accountActions: AccountActions;
   openingBalancePending?: boolean;
@@ -168,6 +180,7 @@ function SelectField({
   options,
   placeholder,
   disabled,
+  required = true,
 }: {
   id: string;
   label: string;
@@ -176,6 +189,7 @@ function SelectField({
   options: Account[];
   placeholder: string;
   disabled?: boolean;
+  required?: boolean;
 }) {
   const selected = options.some(({ id }) => id === value) ? value : "";
   const seenNames = new Set<string>();
@@ -191,10 +205,10 @@ function SelectField({
         value={selected}
         onChange={(event) => onChange(event.target.value)}
         disabled={disabled || options.length === 0}
-        required
+        required={required}
         className="border-input bg-background focus-visible:border-ring focus-visible:ring-ring/50 h-9 w-full border px-3 text-sm transition-colors outline-none focus-visible:ring-1 disabled:cursor-not-allowed disabled:opacity-50"
       >
-        {!selected && <option value="">{placeholder}</option>}
+        {(!selected || !required) && <option value="">{placeholder}</option>}
         {options.map((option) => (
           <option key={option.id} value={option.id}>
             {duplicateNames.has(option.name)
@@ -515,6 +529,104 @@ function MoneyMovementForm({
   );
 }
 
+function HistoryFilterForm({
+  accounts,
+  apply,
+}: {
+  accounts: Account[];
+  apply: HistorySearch["apply"];
+}) {
+  const [accountSelection, setAccount] = useState("");
+  const [validation, setValidation] = useState("");
+  return (
+    <form
+      aria-label="Transaction history filters"
+      className="border-border flex flex-col gap-3 border-b p-4"
+      onSubmit={(event) => {
+        event.preventDefault();
+        const data = new FormData(event.currentTarget);
+        const search = String(data.get("search") ?? "").trim() || undefined;
+        const fromDate = String(data.get("from") ?? "") || undefined;
+        const toDate = String(data.get("to") ?? "") || undefined;
+        if (fromDate && toDate && fromDate > toDate) {
+          setValidation("The start date must be on or before the end date.");
+          return;
+        }
+        setValidation("");
+        const form = data.get("form");
+        const input: HistoryFilters = {
+          search,
+          fromDate,
+          toDate,
+          form:
+            form === "RECEIVE_MONEY" || form === "PAYMENT_CHARGE"
+              ? form
+              : undefined,
+          accountId: activeAccountId(accounts, accountSelection) || undefined,
+        };
+        apply(Object.values(input).some(Boolean) ? input : undefined);
+      }}
+      onReset={() => {
+        setAccount("");
+        setValidation("");
+        apply();
+      }}
+    >
+      <Field id="history-search" label="Search">
+        <Input
+          id="history-search"
+          name="search"
+          type="search"
+          placeholder="Description or account name"
+        />
+      </Field>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <Field id="history-from" label="From">
+          <Input id="history-from" name="from" type="date" />
+        </Field>
+        <Field id="history-to" label="To">
+          <Input id="history-to" name="to" type="date" />
+        </Field>
+      </div>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <Field id="history-form" label="Form">
+          <select
+            id="history-form"
+            name="form"
+            className="border-input bg-background h-9 w-full border px-3 text-sm"
+          >
+            <option value="">All forms</option>
+            <option value="PAYMENT_CHARGE">Payment or charge</option>
+            <option value="RECEIVE_MONEY">Receive money</option>
+          </select>
+        </Field>
+        <SelectField
+          id="history-account"
+          label="Account filter"
+          value={accountSelection}
+          onChange={setAccount}
+          options={accounts}
+          placeholder="All accounts"
+          required={false}
+        />
+      </div>
+      {validation ? (
+        <p role="alert" className="text-destructive text-sm">
+          {validation}
+        </p>
+      ) : null}
+      <div className="flex flex-wrap gap-2">
+        <Button type="submit" size="sm">
+          Apply filters
+        </Button>
+        <Button type="reset" size="sm" variant="ghost">
+          Clear filters
+        </Button>
+      </div>
+    </form>
+  );
+}
+
 function ActionButton({
   action,
   active,
@@ -553,6 +665,7 @@ export function FinanceDashboard({
   name,
   accounts,
   transactions,
+  historySearch,
   summary,
   accountActions,
   openingBalancePending = false,
@@ -570,6 +683,7 @@ export function FinanceDashboard({
   const expenseAccounts = accounts.filter(
     (account) => account.type === "EXPENSE",
   );
+  const visibleTransactions = historySearch?.transactions ?? transactions;
   const postedAccountIds = new Set(
     transactions.flatMap(({ sourceAccountId, allocations }) => [
       sourceAccountId,
@@ -1337,12 +1451,50 @@ export function FinanceDashboard({
                     Your transactions
                   </CardTitle>
                   <span className="text-muted-foreground text-xs">
-                    {transactions.length} total
+                    {historySearch?.pending || historySearch?.error
+                      ? null
+                      : `${visibleTransactions.length} ${historySearch?.filtered ? "matches" : "total"}`}
                   </span>
                 </div>
               </CardHeader>
               <CardContent className="p-0">
-                {transactions.length === 0 ? (
+                {historySearch ? (
+                  <HistoryFilterForm
+                    accounts={accounts}
+                    apply={historySearch.apply}
+                  />
+                ) : null}
+                {historySearch?.pending ? (
+                  <p
+                    role="status"
+                    className="text-muted-foreground p-4 text-sm"
+                  >
+                    Loading matching transactions…
+                  </p>
+                ) : historySearch?.error ? (
+                  <div className="flex flex-col gap-2 p-4">
+                    <p role="alert" className="text-destructive text-sm">
+                      {historySearch.error}
+                    </p>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="self-start"
+                      onClick={historySearch.retry}
+                    >
+                      Retry filters
+                    </Button>
+                  </div>
+                ) : visibleTransactions.length === 0 &&
+                  historySearch?.filtered ? (
+                  <p
+                    role="status"
+                    className="text-muted-foreground p-4 text-sm"
+                  >
+                    No transactions match these filters.
+                  </p>
+                ) : visibleTransactions.length === 0 ? (
                   <div className="px-5 py-10 text-center">
                     <span className="border-border text-muted-foreground mx-auto grid size-10 place-items-center border">
                       <ReceiptText aria-hidden="true" className="size-5" />
@@ -1357,7 +1509,7 @@ export function FinanceDashboard({
                   </div>
                 ) : (
                   <ol className="divide-border/70 divide-y">
-                    {transactions.map((transaction) => {
+                    {visibleTransactions.map((transaction) => {
                       const isIncome = transaction.form === "RECEIVE_MONEY";
                       const allocationNames = transaction.allocations
                         .map((allocation) => allocation.accountName)

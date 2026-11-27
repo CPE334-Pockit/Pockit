@@ -30,8 +30,18 @@ const openingBalanceSchema = z.object({
   accountId: accountIdSchema,
   amount: z.string(),
 });
+const transactionFormSchema = z.enum(["PAYMENT_CHARGE", "RECEIVE_MONEY"]);
+const historyFilterSchema = z
+  .object({
+    search: z.string().trim().optional(),
+    fromDate: z.string().optional(),
+    toDate: z.string().optional(),
+    form: transactionFormSchema.optional(),
+    accountId: z.string().trim().min(1).optional(),
+  })
+  .optional();
 const transactionSchema = z.object({
-  form: z.enum(["PAYMENT_CHARGE", "RECEIVE_MONEY"]),
+  form: transactionFormSchema,
   sourceAccountId: accountIdSchema,
   totalAmount: z.string(),
   transactionDate: z.string(),
@@ -82,6 +92,48 @@ function transactionDate(value: string): Date {
       "Transaction date must be a valid YYYY-MM-DD calendar date",
     );
   }
+}
+
+function historyWhere(
+  ownerId: string,
+  input: z.infer<typeof historyFilterSchema>,
+): Prisma.FinancialTransactionWhereInput {
+  const { search, fromDate, toDate, form, accountId } = input ?? {};
+  const from = fromDate === undefined ? undefined : transactionDate(fromDate);
+  const to = toDate === undefined ? undefined : transactionDate(toDate);
+  if (from && to && from > to) {
+    return badRequest("The start date must be on or before the end date");
+  }
+
+  const and: Prisma.FinancialTransactionWhereInput[] = [];
+  if (search) {
+    // Prisma uses ILIKE for contains with insensitive mode on PostgreSQL.
+    const name = {
+      contains: search.replace(/[\\%_]/g, "\\$&"),
+      mode: "insensitive",
+    } as const;
+    and.push({
+      OR: [
+        { description: name },
+        { sourceAccount: { name } },
+        { allocations: { some: { account: { name } } } },
+      ],
+    });
+  }
+  if (accountId) {
+    and.push({
+      OR: [
+        { sourceAccountId: accountId },
+        { allocations: { some: { accountId } } },
+      ],
+    });
+  }
+  return {
+    ownerId,
+    form,
+    transactionDate: from || to ? { gte: from, lte: to } : undefined,
+    AND: and,
+  };
 }
 
 function sumMinorUnits(values: string[]): bigint {
@@ -598,18 +650,24 @@ export const financeRouter = router({
           return serializeTransaction(transaction);
         });
       }),
-    history: userProcedure.query(async ({ ctx }) => {
-      const transactions = await ctx.db.financialTransaction.findMany({
-        where: { ownerId: ctx.session.user.id },
-        orderBy: [{ transactionDate: "desc" }, { createdAt: "desc" }],
-        include: {
-          allocations: {
-            include: { account: { select: { name: true } } },
+    history: userProcedure
+      .input(historyFilterSchema)
+      .query(async ({ ctx, input }) => {
+        const transactions = await ctx.db.financialTransaction.findMany({
+          where: historyWhere(ctx.session.user.id, input),
+          orderBy: [
+            { transactionDate: "desc" },
+            { createdAt: "desc" },
+            { id: "desc" },
+          ],
+          include: {
+            allocations: {
+              include: { account: { select: { name: true } } },
+            },
           },
-        },
-      });
-      return transactions.map(serializeTransaction);
-    }),
+        });
+        return transactions.map(serializeTransaction);
+      }),
   }),
   summary: router({
     get: userProcedure.query(async ({ ctx }) =>

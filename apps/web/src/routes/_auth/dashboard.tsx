@@ -3,10 +3,14 @@ import { Card, CardContent } from "@Pockit/ui/components/card";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { LoaderCircle, RefreshCw } from "lucide-react";
+import { useState } from "react";
 import { toast } from "sonner";
 
 import { AdminUserManagement } from "@/components/admin-user-management";
-import { FinanceDashboard } from "@/components/finance-dashboard";
+import {
+  FinanceDashboard,
+  type HistoryFilters,
+} from "@/components/finance-dashboard";
 import { useTRPC } from "@/utils/trpc";
 import { userScopedQueryKey } from "@/utils/user-scoped-query-key";
 
@@ -22,7 +26,9 @@ function RouteComponent() {
     return <AdministratorAccess />;
   }
   if (actor?.role === "User") {
-    return <UserFinanceOverview name={actor.name} userId={actor.id} />;
+    return (
+      <UserFinanceOverview key={actor.id} name={actor.name} userId={actor.id} />
+    );
   }
 
   return (
@@ -81,7 +87,7 @@ function AdministratorAccess() {
   );
 }
 
-function UserFinanceOverview({
+export function UserFinanceOverview({
   name,
   userId,
 }: {
@@ -90,6 +96,7 @@ function UserFinanceOverview({
 }) {
   const trpc = useTRPC();
   const queryClient = useQueryClient();
+  const [appliedHistory, setAppliedHistory] = useState<HistoryFilters>();
   const accountsQuery = trpc.finance.accounts.list.queryOptions();
   const historyQuery = trpc.finance.transactions.history.queryOptions();
   const summaryQuery = trpc.finance.summary.get.queryOptions();
@@ -100,6 +107,13 @@ function UserFinanceOverview({
   const history = useQuery({
     ...historyQuery,
     queryKey: userScopedQueryKey(historyQuery.queryKey, userId),
+  });
+  const filteredHistoryOptions =
+    trpc.finance.transactions.history.queryOptions(appliedHistory);
+  const filteredHistory = useQuery({
+    ...filteredHistoryOptions,
+    queryKey: userScopedQueryKey(filteredHistoryOptions.queryKey, userId),
+    enabled: appliedHistory !== undefined,
   });
   const summary = useQuery({
     ...summaryQuery,
@@ -154,6 +168,16 @@ function UserFinanceOverview({
       name={name}
       accounts={accounts.data}
       transactions={history.data}
+      historySearch={{
+        apply: setAppliedHistory,
+        transactions: appliedHistory
+          ? (filteredHistory.data ?? [])
+          : history.data,
+        filtered: appliedHistory !== undefined,
+        pending: appliedHistory !== undefined && filteredHistory.isPending,
+        error: appliedHistory ? filteredHistory.error?.message : undefined,
+        retry: () => void filteredHistory.refetch(),
+      }}
       summary={summary.data}
       accountActions={{
         create: createAccount.mutateAsync,
