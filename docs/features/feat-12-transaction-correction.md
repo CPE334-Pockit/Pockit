@@ -2,7 +2,7 @@
 
 - Issue [#87](https://github.com/CPE334-Pockit/Pockit/issues/87), Sprint 2 [#82](https://github.com/CPE334-Pockit/Pockit/issues/82)
 - Branch `feature/transaction-correction` from `staging-2` at `d20e164`. PR target `staging-2`.
-- Decision status: OQ-04 approved on 27 November 2026 by the product owner, who confirmed the team's choice of Replace and Void with immutable owner-only history, a required reason, and exact final-balance validation. [PR #104](https://github.com/CPE334-Pockit/Pockit/pull/104) contains the preceding draft review and merged at `8418682`.
+- Decision status: OQ-04 approved on 27 November 2026. The project chat confirmed the team's choice of Replace and Void with immutable owner-only history, a required reason, and exact final-balance validation. [PR #104](https://github.com/CPE334-Pockit/Pockit/pull/104) contains the preceding draft review and merged at `8418682`.
 - References: [Theme 7 project brief](../assignments/final/group_work_specs_v1.pdf), [SRS FR-13 and OQ-04](../requirements/srs.md), [feature inventory](../requirements/feature-inventory.md), [System-Level SDS](../architecture/system-level-sds.md), [FEAT-10 money movement](feat-10-money-movement.md), and [FEAT-11 history](feat-11-history-filters.md).
 
 ## OQ-04 decision
@@ -55,6 +55,18 @@ Use two synthetic Users, an Administrator and isolated PostgreSQL.
 | F12-STS-06 | AC-F12-02 | API/database: race two corrections for the same active original and race a correction with a posting that would exhaust its funds. | At most one correction commits per original. Competing operations preserve natural balances and no orphan replacement persists. |
 | F12-STS-07 | AC-F12-02 | UI/acceptance: open a posted draft, update and confirm, reload history, inspect the audit entry and exercise a rejected correction. | The new balances and active history reflect the saved correction, the original is visible through audit history, and rejected input stays editable. |
 | F12-STS-08 | AC-F12-02 | Migration and regression: apply the versioned migration to a database containing pre-existing Transactions. Rerun Sprint 1 and FEAT-09–11 flows, including Filter by Account and opening-balance eligibility. | Existing records remain active and readable. History filters use corrected active records. Earlier account, allocation and privacy behavior still holds. |
+
+## Execution evidence
+
+| Revision or migration | Command | Observed result |
+| --- | --- | --- |
+| `5d5e238` | `bun test packages/api/src/routers/finance.test.ts -t F12-STS-02` with isolated PostgreSQL 17 `DATABASE_URL` and `NODE_ENV=test` | RED: 1 failed, 27 filtered. The test posted the original, then the router reported no procedure at `finance.transactions.correct`. |
+| `20261127000000_add_financial_transaction_correction` | `bun run db:migrate:deploy`, `bun run db:generate` and a PostgreSQL lookup of the synthetic pre-migration row and its allocation | Migration and client generation passed. The existing row and allocation each still held 1,234 satang, and the new table held no correction for that row. |
+| `6e535db` | `bun run test` with migrated PostgreSQL 17 and `NODE_ENV=test` | GREEN: 91 passed, 0 failed, 0 skipped (Web 22, API 45, server 22, database 2). Local Bun 1.3.9. |
+| `6e535db` | `bun run check-types`, `bun run build`, targeted Biome and `git diff origin/staging-2...HEAD --check` | Passed. Type check finished 6 tasks and build finished 2 tasks. |
+
+- **AC-F12-01:** F12-STS-01 satisfied by the recorded OQ-04 decision at `5d5e238`. The decisions and the corresponding UI, API, data and verification contract appear above.
+- **AC-F12-02:** F12-STS-02–06 and F12-STS-08 passed in [finance.test.ts](../../packages/api/src/routers/finance.test.ts). F12-STS-07 in [finance-dashboard.test.tsx](../../apps/web/src/components/finance-dashboard.test.tsx) verifies UI confirmation, preserving editable input after rejection and the audit view. A live browser acceptance run and staging integration remain open.
 
 ## Definition of Done and evidence
 
