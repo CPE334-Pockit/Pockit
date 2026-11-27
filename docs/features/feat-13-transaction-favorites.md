@@ -2,7 +2,7 @@
 
 - Issue [#89](https://github.com/CPE334-Pockit/Pockit/issues/89), Sprint 3 [#83](https://github.com/CPE334-Pockit/Pockit/issues/83)
 - Branch `feature/transaction-favorites` from `staging-3` at `8130fd0`. PR target `staging-3`.
-- Review status: proposed feature contract. [FR-11, FR-12, BR-09, NFR-02 and NFR-06](../requirements/srs.md) define the baseline. [FEAT-11](feat-11-history-filters.md) supplies owner-scoped active history and [FEAT-12](feat-12-transaction-correction.md) defines active and corrected Transactions.
+- Guntee [approved the contract](https://github.com/CPE334-Pockit/Pockit/pull/107#pullrequestreview-6091386137). PR #107 merged into `staging-3` at `d8821cb`. [FR-11, FR-12, BR-09, NFR-02 and NFR-06](../requirements/srs.md) define the baseline. [FEAT-11](feat-11-history-filters.md) supplies owner-scoped active history and [FEAT-12](feat-12-transaction-correction.md) defines active and corrected Transactions.
 
 ## Feature-Level SDS
 
@@ -10,7 +10,7 @@ An authenticated User can mark or unmark an active owned Transaction and view th
 
 From an active history entry or a Favorite, a User can copy the source details into the matching payment or receipt form. Prepopulate the primary Account, total, date, description and each allocation. The User may edit the draft or cancel. Opening and cancelling the draft leave persisted data unchanged. Saving uses the existing posting procedure and creates a distinct active Transaction with a new ID. Its balances and totals reflect the entered values. The source, its allocations and its favorite state remain intact. A new post starts without a favorite marker. Current posting validation applies to the draft, including funds, allocation rules and Account ownership. Rejected saves keep the edited values available.
 
-Favorites refer to the exact original record. After replacement or void, the corrected original remains in correction history and drops out of active favorites. A replacement starts unfavorited. The active-only rule and choice to copy the original date are behavior decisions for review on this contract.
+Favorites refer to the exact original record. After replacement or void, the corrected original remains in correction history and drops out of active favorites. A replacement starts unfavorited. The contract review approved the active-only rule and the choice to copy the original date.
 
 ### UI, API and data contract
 
@@ -19,7 +19,7 @@ Favorites refer to the exact original record. After replacement or void, the cor
 | History and favorites | Provide keyboard-accessible Favorite and Remove favorite controls with an accessible state. Show a Favorites view with an empty state. Use the existing date/creation/ID ordering. Each active owned entry can start an editable duplicate. History filters continue to work independently. |
 | Duplicate editor | Reuse the normal movement form and the same transaction-to-input mapping used to prefill corrections where practical. Label the operation as a new Transaction, provide Cancel, and send user-entered data to `finance.transactions.create` only on Save. Refresh history, favorites and summaries as applicable after a successful request. |
 | API | Add User-only `finance.transactions.setFavorite` with `{ transactionId, favorite }`, and `finance.transactions.favorites` returning the existing serialized Transaction data. Constrain active eligibility and ownership on the server. Return `NOT_FOUND` uniformly for missing, foreign or inactive IDs. Guests receive `UNAUTHORIZED` and Administrators receive `FORBIDDEN`. The list exposes only current active owned records and is also the source of favorite state for visible history entries. |
-| Persistence | Add a versioned PostgreSQL migration for a favorite link keyed by `(transactionId, ownerId)` with an owner-scoped composite foreign key to the Transaction and an owner index. Existing Transactions start unfavorited. Use an idempotent upsert or delete and the existing serializable write boundary to check active eligibility with the write. The active predicate also applies on reads so a concurrent correction cannot leave an inactive favorite visible. Financial postings and audit records retain their current schema and invariants. |
+| Persistence | Add a versioned PostgreSQL migration for a favorite link keyed by `(transactionId, ownerId)` with an owner-scoped composite foreign key to the Transaction and an owner index. Existing Transactions start unfavorited. Use an insert that skips duplicate links or an idempotent delete and the existing serializable write boundary to check active eligibility with the write. The active predicate also applies on reads so a concurrent correction cannot leave an inactive favorite visible. Financial postings and audit records retain their current schema and invariants. |
 
 ## Acceptance and Software Test Specification
 
@@ -36,6 +36,17 @@ Use two synthetic Users, an Administrator and isolated PostgreSQL.
 | F13-STS-04 | AC-F13-02 | API/database. Post an edited copy with changed amount, date and allocations. Read back both records. Submit an invalid split or an overdrawn copy through the same create procedure. | Distinct ID, original fields and favorite untouched, exact effect from the saved copy, and zero writes for invalid input. |
 | F13-STS-05 | AC-F13-01, AC-F13-02 | Web. Exercise Favorite/Remove favorite, empty state, opening both prefilled form types, editing, cancellation, and rejection. | UI represents persisted favorite state. Opening or cancelling sends no create request, and rejected input remains editable. |
 | F13-STS-06 | AC-F13-01, AC-F13-02 | Integrated acceptance. Apply migrations and use the production build with synthetic records. Use the keyboard to favorite, reload, and post an edited duplicate. Reload and verify history and balances. | Favorite persists and both records, amounts and balances match the edited post. Earlier account, history and correction workflows pass regression. |
+
+## Execution evidence
+
+| Revision | Command | Result |
+| --- | --- | --- |
+| `fc55a4e` | `bun test packages/api/src/routers/finance.test.ts -t F13-STS` with isolated PostgreSQL 17 | RED: four tests failed because `finance.transactions.setFavorite` was absent. |
+| `fc55a4e` | From `apps/web`, `bun test src/components/finance-dashboard.test.tsx -t F13-STS` | RED: two tests failed because the Favorites and Duplicate controls were absent. |
+| `fa57971` | `bun run db:migrate:deploy`, `bun run db:generate`, and `bun run test` with Bun 1.4.4 and isolated PostgreSQL 17 | GREEN: migration `20261128000000_add_financial_transaction_favorite` applied. 99 tests passed with zero failures or skips (Web 26, API 49, Server 22, database 2). F13-STS-01–05 passed. |
+| `fa57971` | `bun run check-types`, `bun run build`, and `git diff --cached --check` | Passed. |
+
+AC-F13-01 and AC-F13-02 have passing automated evidence. F13-STS-06, teammate implementation review, and staging integration are pending.
 
 ## Definition of Done
 
