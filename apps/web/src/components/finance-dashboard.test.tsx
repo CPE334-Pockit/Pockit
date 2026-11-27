@@ -129,6 +129,103 @@ const createTransaction = mock(
   (_input: Inputs["finance"]["transactions"]["create"]) => Promise.resolve(),
 );
 
+describe("F14-STS-05 all-time category report", () => {
+  function renderReport(categories: Summary["categories"]) {
+    const apply = mock((_input?: HistoryFilters) => {});
+    const dashboard = (historyFiltered: boolean) => (
+      <FinanceDashboard
+        name="Demo User"
+        accounts={accounts}
+        transactions={noTransactions}
+        summary={{ ...summary, categories }}
+        accountActions={accountActions}
+        historySearch={{
+          apply,
+          transactions: noTransactions,
+          filtered: historyFiltered,
+          pending: false,
+          retry: () => {},
+        }}
+        onSetOpeningBalance={setOpeningBalance}
+        onCreateTransaction={createTransaction}
+      />
+    );
+    return { view: render(dashboard(false)), apply, dashboard };
+  }
+
+  it("groups same-name categories and exact totals independently of history filters", () => {
+    const { view, apply, dashboard } = renderReport([
+      {
+        accountId: "income-travel",
+        accountName: "Travel",
+        type: "INCOME",
+        total: "1234.56",
+      },
+      {
+        accountId: "expense-travel",
+        accountName: "Travel",
+        type: "EXPENSE",
+        total: "0.01",
+      },
+      {
+        accountId: "expense-groceries",
+        accountName: "Groceries",
+        type: "EXPENSE",
+        total: "0.00",
+      },
+    ]);
+    const filters = within(
+      view.getByRole("form", { name: "Transaction history filters" }),
+    );
+    const checkReport = () => {
+      const report = within(
+        view.getByRole("region", { name: "All-time category report" }),
+      );
+      const income = within(report.getByRole("table", { name: "Income" }));
+      const expense = within(report.getByRole("table", { name: "Expenses" }));
+      expect(
+        income.getByRole("row", { name: /Travel.*1234\.56/ }),
+      ).toBeTruthy();
+      expect(expense.getByRole("row", { name: /Travel.*0\.01/ })).toBeTruthy();
+      expect(
+        expense.getByRole("row", { name: /Groceries.*0\.00/ }),
+      ).toBeTruthy();
+    };
+    checkReport();
+    fireEvent.input(filters.getByRole("searchbox"), {
+      target: { value: "hidden" },
+    });
+    fireEvent.click(filters.getByRole("button", { name: "Apply filters" }));
+    expect(apply).toHaveBeenLastCalledWith(
+      expect.objectContaining({ search: "hidden" }),
+    );
+    view.rerender(dashboard(true));
+    expect(view.getByText("No transactions match these filters.")).toBeTruthy();
+    checkReport();
+    fireEvent.click(filters.getByRole("button", { name: "Clear filters" }));
+    expect(apply).toHaveBeenLastCalledWith();
+    view.rerender(dashboard(false));
+    checkReport();
+  });
+
+  it("keeps zero rows and describes an unconfigured group", () => {
+    const { view } = renderReport([
+      {
+        accountId: "income-salary",
+        accountName: "Salary",
+        type: "INCOME",
+        total: "0.00",
+      },
+    ]);
+    const report = within(
+      view.getByRole("region", { name: "All-time category report" }),
+    );
+    expect(report.getByRole("row", { name: /Salary.*0\.00/ })).toBeTruthy();
+    expect(report.getByRole("heading", { name: "Expenses" })).toBeTruthy();
+    expect(report.getByText("No Expense categories yet.")).toBeTruthy();
+  });
+});
+
 describe("F13-STS-05 favorites and duplication", () => {
   const payment: Transaction = {
     id: "favorite-payment",

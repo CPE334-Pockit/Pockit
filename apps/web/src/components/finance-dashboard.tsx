@@ -950,6 +950,88 @@ function ActionButton({
   );
 }
 
+function CategoryReportGroup({
+  title,
+  categories,
+  emptyMessage,
+}: {
+  title: string;
+  categories: Summary["categories"];
+  emptyMessage: string;
+}) {
+  const headingId = useId();
+
+  return (
+    <div className="space-y-2">
+      <h3 id={headingId} className="text-sm font-semibold">
+        {title}
+      </h3>
+      {categories.length === 0 ? (
+        <p className="text-muted-foreground text-sm">{emptyMessage}</p>
+      ) : (
+        <table aria-labelledby={headingId} className="w-full text-sm">
+          <thead className="text-muted-foreground text-xs">
+            <tr className="border-border/70 border-b">
+              <th scope="col" className="pb-2 text-left font-normal">
+                Category
+              </th>
+              <th scope="col" className="pb-2 text-right font-normal">
+                Total (THB)
+              </th>
+            </tr>
+          </thead>
+          <tbody className="divide-border/70 divide-y">
+            {categories.map(({ accountId, accountName, total }) => (
+              <tr key={accountId}>
+                <th
+                  scope="row"
+                  className="py-2 pr-3 text-left font-normal break-words"
+                >
+                  {accountName}
+                </th>
+                <td className="py-2 text-right font-medium whitespace-nowrap tabular-nums">
+                  {formatMoney(total)}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </div>
+  );
+}
+
+function CategoryReport({ categories }: { categories: Summary["categories"] }) {
+  const headingId = useId();
+
+  return (
+    <section aria-labelledby={headingId} className="min-w-0">
+      <Card className="border-border/80">
+        <CardHeader className="border-border/70 border-b pb-4">
+          <h2 id={headingId} className="text-xl font-medium">
+            All-time category report
+          </h2>
+        </CardHeader>
+        <CardContent className="space-y-5 pt-4">
+          <CategoryReportGroup
+            title="Income"
+            categories={categories.filter(({ type }) => type === "INCOME")}
+            emptyMessage="No Income categories yet."
+          />
+          <CategoryReportGroup
+            title="Expenses"
+            categories={categories.filter(({ type }) => type === "EXPENSE")}
+            emptyMessage="No Expense categories yet."
+          />
+          <p className="border-border/70 text-muted-foreground border-t pt-3 text-xs">
+            Opening balances, transfers, loans and repayments are excluded.
+          </p>
+        </CardContent>
+      </Card>
+    </section>
+  );
+}
+
 export function FinanceDashboard({
   name,
   accounts,
@@ -2055,59 +2137,7 @@ export function FinanceDashboard({
 
           <section className="grid gap-5 lg:grid-cols-[minmax(0,1.15fr)_minmax(18rem,0.85fr)]">
             <AccountManagement accounts={accounts} actions={accountActions} />
-            <Card className="border-border/80">
-              <CardHeader className="border-border/70 border-b pb-4">
-                <p className="text-primary text-[11px] font-semibold tracking-[0.18em] uppercase">
-                  Category totals
-                </p>
-                <CardTitle className="mt-1 text-xl">
-                  Spending & income mix
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4 pt-4">
-                {summary.categories.map((category) => {
-                  const maxUnits = summary.categories.reduce(
-                    (maximum, entry) => {
-                      const units = toMinorUnits(entry.total) ?? 0n;
-                      if (units > maximum) return units;
-                      return maximum;
-                    },
-                    1n,
-                  );
-                  const currentUnits = toMinorUnits(category.total) ?? 0n;
-                  const percent = (currentUnits * 100n) / maxUnits;
-                  const boundedPercent = percent > 100n ? 100n : percent;
-                  const isIncome = category.type === "INCOME";
-                  return (
-                    <div key={category.accountId}>
-                      <div className="mb-1.5 flex items-center justify-between gap-3 text-xs">
-                        <span className="text-muted-foreground truncate">
-                          {category.accountName}
-                        </span>
-                        <span className="shrink-0 font-medium tabular-nums">
-                          {formatMoney(category.total)}
-                        </span>
-                      </div>
-                      <div className="bg-muted h-1.5">
-                        <div
-                          className={`h-full ${isIncome ? "bg-emerald-400" : "bg-primary"}`}
-                          style={{ width: `${boundedPercent}%` }}
-                        />
-                      </div>
-                    </div>
-                  );
-                })}
-                {summary.categories.length === 0 && (
-                  <p className="text-muted-foreground text-sm">
-                    Categories will appear after your accounts are set up.
-                  </p>
-                )}
-                <p className="border-border/70 text-muted-foreground border-t pt-3 text-xs">
-                  Opening balances and card repayments stay outside your income
-                  and spending totals.
-                </p>
-              </CardContent>
-            </Card>
+            <CategoryReport categories={summary.categories} />
           </section>
         </div>
       </div>
