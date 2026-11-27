@@ -1,7 +1,13 @@
 import type { AppRouter } from "@Pockit/api/routers/index";
 import { describe, expect, it, mock } from "bun:test";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, waitFor, within } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  render,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import { createTRPCClient, type TRPCLink } from "@trpc/client";
 import type { inferRouterInputs, inferRouterOutputs } from "@trpc/server";
 import { observable } from "@trpc/server/observable";
@@ -803,7 +809,7 @@ describe("finance dashboard", () => {
     }
   });
 
-  it("F12-STS-07 confirms a replacement and void and displays the retained audit", async () => {
+  describe("F12-STS-07 correction controls", () => {
     const original: Transaction = {
       id: "original-synthetic-card",
       form: "PAYMENT_CHARGE",
@@ -831,19 +837,6 @@ describe("finance dashboard", () => {
         amount: "12.00",
       })),
     };
-    const correct = mock(
-      async (_input: Inputs["finance"]["transactions"]["correct"]) => {},
-    );
-    const toggleAudit = mock(() => {});
-    const actions = {
-      correct,
-      pending: false,
-      auditOpen: false,
-      toggleAudit,
-      audit: [],
-      auditPending: false,
-      retryAudit: () => {},
-    };
     const props = {
       name: "Demo User",
       accounts,
@@ -852,125 +845,148 @@ describe("finance dashboard", () => {
       onSetOpeningBalance: setOpeningBalance,
       onCreateTransaction: createTransaction,
     };
-    const view = render(
-      <FinanceDashboard
-        {...props}
-        transactions={[original]}
-        correctionActions={actions}
-      />,
-    );
-    fireEvent.click(view.getByRole("button", { name: "Replace" }));
-    const editor = within(
-      view.getByRole("region", { name: "Transaction correction" }),
-    );
-    const save = editor.getByRole("button", {
-      name: "Save replacement",
-    }) as HTMLButtonElement;
-    expect(save.disabled).toBe(true);
-    expect(
-      (editor.getByLabelText("Transaction total") as HTMLInputElement).value,
-    ).toBe("20.00");
-    expect(
-      (editor.getByLabelText("Allocation account 1") as HTMLSelectElement)
-        .value,
-    ).toBe("expense-dining");
-    fireEvent.input(editor.getByLabelText("Transaction total"), {
-      target: { value: "12.00" },
-    });
-    fireEvent.input(editor.getByLabelText("Allocation amount 1"), {
-      target: { value: "12.00" },
-    });
-    fireEvent.input(editor.getByLabelText("Correction reason"), {
-      target: { value: "Wrong amount" },
-    });
-    fireEvent.click(editor.getByLabelText("Confirm replacement"));
-    correct.mockRejectedValueOnce(new Error("Concurrent correction"));
-    fireEvent.click(save);
-    expect((await editor.findByRole("alert")).textContent).toBe(
-      "Concurrent correction",
-    );
-    expect(
-      (editor.getByLabelText("Allocation amount 1") as HTMLInputElement).value,
-    ).toBe("12.00");
-    fireEvent.click(save);
-    await waitFor(() =>
+
+    function renderCorrections(transactions: Transaction[]) {
+      const correct = mock(
+        async (_input: Inputs["finance"]["transactions"]["correct"]) => {},
+      );
+      const toggleAudit = mock(() => {});
+      const actions = {
+        correct,
+        pending: false,
+        auditOpen: false,
+        toggleAudit,
+        audit: [],
+        auditPending: false,
+        retryAudit: () => {},
+      };
+      const view = render(
+        <FinanceDashboard
+          {...props}
+          transactions={transactions}
+          correctionActions={actions}
+        />,
+      );
+      return { view, correct, toggleAudit, actions };
+    }
+
+    it("preserves a rejected replacement draft and submits the confirmed changes", async () => {
+      const { view, correct } = renderCorrections([original]);
+      fireEvent.click(view.getByRole("button", { name: "Replace" }));
+      const editor = within(
+        view.getByRole("region", { name: "Transaction correction" }),
+      );
+      const save = editor.getByRole("button", {
+        name: "Save replacement",
+      }) as HTMLButtonElement;
+      expect(save.disabled).toBe(true);
+      expect(
+        (editor.getByLabelText("Transaction total") as HTMLInputElement).value,
+      ).toBe("20.00");
+      expect(
+        (editor.getByLabelText("Allocation account 1") as HTMLSelectElement)
+          .value,
+      ).toBe("expense-dining");
+      fireEvent.input(editor.getByLabelText("Transaction total"), {
+        target: { value: "12.00" },
+      });
+      fireEvent.input(editor.getByLabelText("Allocation amount 1"), {
+        target: { value: "12.00" },
+      });
+      fireEvent.input(editor.getByLabelText("Correction reason"), {
+        target: { value: "Wrong amount" },
+      });
+      fireEvent.click(editor.getByLabelText("Confirm replacement"));
+      correct.mockRejectedValueOnce(new Error("Concurrent correction"));
+      await act(async () => {
+        fireEvent.click(save);
+      });
+      expect(editor.getByRole("alert").textContent).toBe(
+        "Concurrent correction",
+      );
+      expect(
+        (editor.getByLabelText("Allocation amount 1") as HTMLInputElement)
+          .value,
+      ).toBe("12.00");
+      await act(async () => {
+        fireEvent.click(save);
+      });
       expect(
         view.queryByRole("region", { name: "Transaction correction" }),
-      ).toBeNull(),
-    );
-    expect(correct).toHaveBeenLastCalledWith({
-      action: "REPLACE",
-      transactionId: original.id,
-      reason: "Wrong amount",
-      replacement: {
-        form: "PAYMENT_CHARGE",
-        sourceAccountId: "card-main",
-        totalAmount: "12.00",
-        description: original.description,
-        transactionDate: "2026-11-27",
-        allocations: [
-          { kind: "EXPENSE", accountId: "expense-dining", amount: "12.00" },
-        ],
-      },
-    });
-
-    view.rerender(
-      <FinanceDashboard
-        {...props}
-        transactions={[replacement]}
-        correctionActions={actions}
-      />,
-    );
-    fireEvent.click(view.getByRole("button", { name: "Void" }));
-    const voidEditor = within(
-      view.getByRole("region", { name: "Transaction correction" }),
-    );
-    fireEvent.input(voidEditor.getByLabelText("Correction reason"), {
-      target: { value: "Duplicate expense" },
-    });
-    fireEvent.click(voidEditor.getByLabelText("Confirm void"));
-    fireEvent.click(
-      voidEditor.getByRole("button", { name: "Void transaction" }),
-    );
-    await waitFor(() =>
-      expect(
-        view.queryByRole("region", { name: "Transaction correction" }),
-      ).toBeNull(),
-    );
-    expect(correct).toHaveBeenLastCalledWith({
-      action: "VOID",
-      transactionId: replacement.id,
-      reason: "Duplicate expense",
-    });
-
-    fireEvent.click(view.getByRole("button", { name: "Correction history" }));
-    expect(toggleAudit).toHaveBeenCalledTimes(1);
-    view.rerender(
-      <FinanceDashboard
-        {...props}
-        transactions={[]}
-        correctionActions={{
-          ...actions,
-          auditOpen: true,
-          audit: [
-            {
-              id: "audit-synthetic",
-              actorId: "synthetic-actor",
-              action: "REPLACE",
-              reason: "Wrong amount",
-              recordedAt: "2026-11-27T10:00:00.000Z",
-              original,
-              replacement,
-            },
+      ).toBeNull();
+      expect(correct).toHaveBeenLastCalledWith({
+        action: "REPLACE",
+        transactionId: original.id,
+        reason: "Wrong amount",
+        replacement: {
+          form: "PAYMENT_CHARGE",
+          sourceAccountId: "card-main",
+          totalAmount: "12.00",
+          description: original.description,
+          transactionDate: "2026-11-27",
+          allocations: [
+            { kind: "EXPENSE", accountId: "expense-dining", amount: "12.00" },
           ],
-        }}
-      />,
-    );
-    const audit = within(
-      view.getByRole("list", { name: "Transaction correction history" }),
-    );
-    expect(audit.getByText("Replaced · Wrong amount")).toBeTruthy();
-    expect(audit.getByText(/Original.*฿20.00/)).toBeTruthy();
-    expect(audit.getByText(/Replacement.*฿12.00/)).toBeTruthy();
+        },
+      });
+    });
+
+    it("sends a reason with the confirmed void", async () => {
+      const { view, correct } = renderCorrections([replacement]);
+      fireEvent.click(view.getByRole("button", { name: "Void" }));
+      const voidEditor = within(
+        view.getByRole("region", { name: "Transaction correction" }),
+      );
+      fireEvent.input(voidEditor.getByLabelText("Correction reason"), {
+        target: { value: "Duplicate expense" },
+      });
+      fireEvent.click(voidEditor.getByLabelText("Confirm void"));
+      await act(async () => {
+        fireEvent.click(
+          voidEditor.getByRole("button", { name: "Void transaction" }),
+        );
+      });
+      expect(
+        view.queryByRole("region", { name: "Transaction correction" }),
+      ).toBeNull();
+      expect(correct).toHaveBeenLastCalledWith({
+        action: "VOID",
+        transactionId: replacement.id,
+        reason: "Duplicate expense",
+      });
+    });
+
+    it("displays the original and replacement in correction history", () => {
+      const { view, toggleAudit, actions } = renderCorrections([replacement]);
+      fireEvent.click(view.getByRole("button", { name: "Correction history" }));
+      expect(toggleAudit).toHaveBeenCalledTimes(1);
+      view.rerender(
+        <FinanceDashboard
+          {...props}
+          transactions={[]}
+          correctionActions={{
+            ...actions,
+            auditOpen: true,
+            audit: [
+              {
+                id: "audit-synthetic",
+                actorId: "synthetic-actor",
+                action: "REPLACE",
+                reason: "Wrong amount",
+                recordedAt: "2026-11-27T10:00:00.000Z",
+                original,
+                replacement,
+              },
+            ],
+          }}
+        />,
+      );
+      const audit = within(
+        view.getByRole("list", { name: "Transaction correction history" }),
+      );
+      expect(audit.getByText("Replaced · Wrong amount")).toBeTruthy();
+      expect(audit.getByText(/Original.*฿20.00/)).toBeTruthy();
+      expect(audit.getByText(/Replacement.*฿12.00/)).toBeTruthy();
+    });
   });
 });

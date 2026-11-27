@@ -1,4 +1,5 @@
 import { describe, expect, it, mock } from "bun:test";
+import * as router from "@tanstack/react-router";
 import { fireEvent, render, waitFor } from "@testing-library/react";
 
 type SignInCallbacks = {
@@ -15,6 +16,8 @@ const signInEmail = mock(
 const navigate = mock(async (_options: { to: string }) => {});
 const toastSuccess = mock((_message: string) => {});
 const toastError = mock((_message: string) => {});
+// Bun shares module mocks between test files. Capture the real route exports first.
+const routerExports = { ...router };
 
 mock.module("@/lib/auth-client", () => ({
   authClient: {
@@ -23,6 +26,7 @@ mock.module("@/lib/auth-client", () => ({
   },
 }));
 mock.module("@tanstack/react-router", () => ({
+  ...routerExports,
   useNavigate: () => navigate,
 }));
 mock.module("sonner", () => ({
