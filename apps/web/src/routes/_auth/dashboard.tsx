@@ -127,6 +127,11 @@ export function UserFinanceOverview({
     queryKey: userScopedQueryKey(auditOptions.queryKey, userId),
     enabled: auditOpen,
   });
+  const favoritesOptions = trpc.finance.transactions.favorites.queryOptions();
+  const favorites = useQuery({
+    ...favoritesOptions,
+    queryKey: userScopedQueryKey(favoritesOptions.queryKey, userId),
+  });
 
   const refreshFinance = () => queryClient.invalidateQueries();
   const createAccount = useMutation(
@@ -162,6 +167,15 @@ export function UserFinanceOverview({
         toast.success("Correction recorded");
         await refreshFinance();
       },
+    }),
+  );
+  const setFavorite = useMutation(
+    trpc.finance.transactions.setFavorite.mutationOptions({
+      onSuccess: () =>
+        queryClient.invalidateQueries({
+          queryKey: userScopedQueryKey(favoritesOptions.queryKey, userId),
+        }),
+      onError: (error) => toast.error(error.message),
     }),
   );
 
@@ -203,6 +217,14 @@ export function UserFinanceOverview({
         auditPending: audit.isPending,
         auditError: audit.error?.message,
         retryAudit: () => void audit.refetch(),
+      }}
+      favoriteActions={{
+        transactions: favorites.data ?? [],
+        setFavorite: setFavorite.mutateAsync,
+        pending: setFavorite.isPending,
+        loading: favorites.isPending,
+        error: favorites.error?.message,
+        retry: () => void favorites.refetch(),
       }}
       summary={summary.data}
       accountActions={{

@@ -77,6 +77,16 @@ type CorrectionActions = {
   auditError?: string;
   retryAudit: () => void;
 };
+type FavoriteActions = {
+  transactions: Transaction[];
+  setFavorite: (
+    input: Inputs["finance"]["transactions"]["setFavorite"],
+  ) => Promise<unknown>;
+  pending: boolean;
+  loading: boolean;
+  error?: string;
+  retry: () => void;
+};
 
 type FinanceDashboardProps = {
   name: string;
@@ -84,6 +94,7 @@ type FinanceDashboardProps = {
   transactions: Transaction[];
   historySearch?: HistorySearch;
   correctionActions?: CorrectionActions;
+  favoriteActions?: FavoriteActions;
   summary: Summary;
   accountActions: AccountActions;
   openingBalancePending?: boolean;
@@ -317,19 +328,23 @@ function MoneyMovementForm({
   accounts,
   busy,
   onPost,
-  replacement,
+  initialDraft,
+  saveLabel,
+  canSubmit = true,
 }: {
   form: TransactionInput["form"];
   accounts: Account[];
   busy: boolean;
   onPost: (input: TransactionInput) => Promise<void>;
-  replacement?: { draft: TransactionInput; confirmed: boolean };
+  initialDraft?: TransactionInput;
+  saveLabel?: string;
+  canSubmit?: boolean;
 }) {
   const fieldId = useId();
   const isPayment = form === "PAYMENT_CHARGE";
   const initialKind = isPayment ? "EXPENSE" : "INCOME";
   type Line = AllocationDraft & { kind: AllocationKind };
-  const draft = replacement?.draft;
+  const draft = initialDraft;
   const [sourceSelection, setSource] = useState(draft?.sourceAccountId ?? "");
   const [total, setTotal] = useState(draft?.totalAmount ?? "");
   const [date, setDate] = useState(draft?.transactionDate ?? "");
@@ -364,7 +379,7 @@ function MoneyMovementForm({
   const canPost =
     source &&
     date &&
-    (!replacement || replacement.confirmed) &&
+    canSubmit &&
     !duplicateExpense &&
     allocationsMatch(total, lines) &&
     lines.every(({ accountId }, index) =>
@@ -547,15 +562,30 @@ function MoneyMovementForm({
         >
           {busy
             ? "Saving entry…"
-            : replacement
-              ? "Save replacement"
-              : isPayment
-                ? "Record payment or charge"
-                : "Record receipt"}
+            : (saveLabel ??
+              (isPayment ? "Record payment or charge" : "Record receipt"))}
         </Button>
       </fieldset>
     </form>
   );
+}
+
+function draftFromTransaction(transaction: Transaction): TransactionInput {
+  return {
+    form:
+      transaction.form === "PAYMENT_CHARGE"
+        ? "PAYMENT_CHARGE"
+        : "RECEIVE_MONEY",
+    sourceAccountId: transaction.sourceAccountId,
+    totalAmount: transaction.totalAmount,
+    transactionDate: transaction.transactionDate,
+    description: transaction.description ?? undefined,
+    allocations: transaction.allocations.map(({ accountId, amount, kind }) => ({
+      accountId,
+      amount,
+      kind: kind as AllocationKind,
+    })),
+  };
 }
 
 function CorrectionEditor({
@@ -572,8 +602,8 @@ function CorrectionEditor({
   cancel: () => void;
 }) {
   const { action, transaction } = selection;
-  const originalForm =
-    transaction.form === "PAYMENT_CHARGE" ? "PAYMENT_CHARGE" : "RECEIVE_MONEY";
+  const original = draftFromTransaction(transaction);
+  const originalForm = original.form;
   const [form, setForm] = useState<TransactionInput["form"]>(originalForm);
   const [reason, setReason] = useState("");
   const [confirmed, setConfirmed] = useState(false);
@@ -664,27 +694,13 @@ function CorrectionEditor({
           form={form}
           accounts={accounts}
           busy={busy}
-          replacement={{
-            confirmed: ready,
-            draft: {
-              form,
-              sourceAccountId:
-                form === originalForm ? transaction.sourceAccountId : "",
-              totalAmount: transaction.totalAmount,
-              transactionDate: transaction.transactionDate,
-              description: transaction.description ?? undefined,
-              allocations:
-                form === originalForm
-                  ? transaction.allocations.map(
-                      ({ accountId, amount, kind }) => ({
-                        accountId,
-                        amount,
-                        kind: kind as AllocationKind,
-                      }),
-                    )
-                  : [],
-            },
-          }}
+          saveLabel="Save replacement"
+          canSubmit={ready}
+          initialDraft={
+            form === originalForm
+              ? original
+              : { ...original, form, sourceAccountId: "", allocations: [] }
+          }
           onPost={(draft) =>
             complete({
               action: "REPLACE",
@@ -940,6 +956,7 @@ export function FinanceDashboard({
   transactions,
   historySearch,
   correctionActions,
+  favoriteActions,
   summary,
   accountActions,
   openingBalancePending = false,
@@ -959,7 +976,24 @@ export function FinanceDashboard({
   );
   const [selectedCorrection, setSelectedCorrection] =
     useState<SelectedCorrection | null>(null);
-  const visibleTransactions = historySearch?.transactions ?? transactions;
+  const [favoritesOpen, setFavoritesOpen] = useState(false);
+  const [duplicate, setDuplicate] = useState<Transaction | null>(null);
+  const duplicateDraft = duplicate ? draftFromTransaction(duplicate) : null;
+  const favoriteIds = new Set(
+    favoriteActions?.transactions.map(({ id }) => id),
+  );
+  const visibleTransactions = favoritesOpen
+    ? (favoriteActions?.transactions ?? [])
+    : (historySearch?.transactions ?? transactions);
+  const listPending = favoritesOpen
+    ? favoriteActions?.loading
+    : historySearch?.pending;
+  const listError = favoritesOpen
+    ? favoriteActions?.error
+    : historySearch?.error;
+  const listRetry = favoritesOpen
+    ? favoriteActions?.retry
+    : historySearch?.retry;
   const postedAccountIds = new Set(
     transactions.flatMap(({ sourceAccountId, allocations }) => [
       sourceAccountId,
@@ -1725,25 +1759,44 @@ export function FinanceDashboard({
                 </p>
                 <div className="flex items-end justify-between gap-3">
                   <CardTitle className="mt-1 text-xl">
-                    Your transactions
+                    {favoritesOpen
+                      ? "Favorite transactions"
+                      : "Your transactions"}
                   </CardTitle>
                   <span className="text-muted-foreground text-xs">
-                    {correctionActions?.auditOpen ||
-                    historySearch?.pending ||
-                    historySearch?.error
+                    {correctionActions?.auditOpen || listPending || listError
                       ? null
-                      : `${visibleTransactions.length} ${historySearch?.filtered ? "matches" : "total"}`}
+                      : `${visibleTransactions.length} ${!favoritesOpen && historySearch?.filtered ? "matches" : "total"}`}
                   </span>
                 </div>
+                {favoriteActions && !correctionActions?.auditOpen ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="self-start"
+                    disabled={transactionPending}
+                    onClick={() => {
+                      setSelectedCorrection(null);
+                      setDuplicate(null);
+                      setFavoritesOpen((current) => !current);
+                    }}
+                  >
+                    {favoritesOpen ? "Show active transactions" : "Favorites"}
+                  </Button>
+                ) : null}
                 {correctionActions ? (
                   <Button
                     type="button"
                     variant="outline"
                     size="sm"
                     className="self-start"
+                    disabled={transactionPending}
                     aria-expanded={correctionActions.auditOpen}
                     onClick={() => {
                       setSelectedCorrection(null);
+                      setDuplicate(null);
+                      setFavoritesOpen(false);
                       correctionActions.toggleAudit();
                     }}
                   >
@@ -1754,6 +1807,41 @@ export function FinanceDashboard({
                 ) : null}
               </CardHeader>
               <CardContent className="p-0">
+                {duplicate &&
+                duplicateDraft &&
+                !correctionActions?.auditOpen ? (
+                  <section
+                    aria-label="Duplicate transaction"
+                    className="border-border flex flex-col gap-3 border-b p-4"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <h2 className="text-sm font-medium">
+                        Duplicate transaction
+                      </h2>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        disabled={transactionPending}
+                        onClick={() => setDuplicate(null)}
+                      >
+                        Cancel duplicate
+                      </Button>
+                    </div>
+                    <MoneyMovementForm
+                      key={duplicate.id}
+                      form={duplicateDraft.form}
+                      accounts={accounts}
+                      busy={isBusy}
+                      initialDraft={duplicateDraft}
+                      saveLabel="Save duplicate"
+                      onPost={async (input) => {
+                        await onCreateTransaction(input);
+                        setDuplicate(null);
+                      }}
+                    />
+                  </section>
+                ) : null}
                 {selectedCorrection &&
                 correctionActions &&
                 !correctionActions.auditOpen ? (
@@ -1770,7 +1858,7 @@ export function FinanceDashboard({
                   />
                 ) : null}
                 {historySearch ? (
-                  <div hidden={correctionActions?.auditOpen}>
+                  <div hidden={favoritesOpen || correctionActions?.auditOpen}>
                     <HistoryFilterForm
                       accounts={accounts}
                       apply={historySearch.apply}
@@ -1782,28 +1870,37 @@ export function FinanceDashboard({
                     actions={correctionActions}
                     accounts={accounts}
                   />
-                ) : historySearch?.pending ? (
+                ) : listPending ? (
                   <p
                     role="status"
                     className="text-muted-foreground p-4 text-sm"
                   >
-                    Loading matching transactions…
+                    {favoritesOpen
+                      ? "Loading favorite transactions…"
+                      : "Loading matching transactions…"}
                   </p>
-                ) : historySearch?.error ? (
+                ) : listError ? (
                   <div className="flex flex-col gap-2 p-4">
                     <p role="alert" className="text-destructive text-sm">
-                      {historySearch.error}
+                      {listError}
                     </p>
                     <Button
                       type="button"
                       variant="outline"
                       size="sm"
                       className="self-start"
-                      onClick={historySearch.retry}
+                      onClick={listRetry}
                     >
-                      Retry filters
+                      {favoritesOpen ? "Retry favorites" : "Retry filters"}
                     </Button>
                   </div>
+                ) : visibleTransactions.length === 0 && favoritesOpen ? (
+                  <p
+                    role="status"
+                    className="text-muted-foreground p-4 text-sm"
+                  >
+                    No favorite transactions.
+                  </p>
                 ) : visibleTransactions.length === 0 &&
                   historySearch?.filtered ? (
                   <p
@@ -1829,6 +1926,13 @@ export function FinanceDashboard({
                   <ol className="divide-border/70 divide-y">
                     {visibleTransactions.map((transaction) => {
                       const isIncome = transaction.form === "RECEIVE_MONEY";
+                      const label =
+                        transaction.description ||
+                        (isIncome ? "Money received" : "Payment or charge");
+                      const favorite = favoriteIds.has(transaction.id);
+                      const favoriteLabel = favorite
+                        ? "Remove favorite"
+                        : "Favorite";
                       const allocationNames = transaction.allocations
                         .map((allocation) => allocation.accountName)
                         .filter(Boolean)
@@ -1855,28 +1959,64 @@ export function FinanceDashboard({
                           </span>
                           <div className="min-w-0 flex-1">
                             <p className="truncate text-sm font-medium">
-                              {transaction.description ||
-                                (isIncome
-                                  ? "Money received"
-                                  : "Payment or charge")}
+                              {label}
                             </p>
                             <p className="text-muted-foreground mt-1 truncate text-xs">
                               {transaction.transactionDate}
                               {allocationNames ? ` · ${allocationNames}` : ""}
                             </p>
-                            {correctionActions ? (
+                            {favoriteActions ? (
+                              <div className="mt-2 flex flex-wrap gap-2">
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="outline"
+                                  aria-label={`${favoriteLabel} ${label}`}
+                                  disabled={
+                                    favoriteActions.pending ||
+                                    favoriteActions.loading ||
+                                    Boolean(favoriteActions.error)
+                                  }
+                                  onClick={() =>
+                                    void favoriteActions
+                                      .setFavorite({
+                                        transactionId: transaction.id,
+                                        favorite: !favorite,
+                                      })
+                                      .catch(() => {})
+                                  }
+                                >
+                                  {favoriteLabel}
+                                </Button>
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="ghost"
+                                  aria-label={`Duplicate ${label}`}
+                                  disabled={isBusy}
+                                  onClick={() => {
+                                    setSelectedCorrection(null);
+                                    setDuplicate(transaction);
+                                  }}
+                                >
+                                  Duplicate
+                                </Button>
+                              </div>
+                            ) : null}
+                            {correctionActions && !favoritesOpen ? (
                               <div className="mt-2 flex flex-wrap gap-2">
                                 <Button
                                   type="button"
                                   size="sm"
                                   variant="outline"
                                   disabled={isBusy}
-                                  onClick={() =>
+                                  onClick={() => {
+                                    setDuplicate(null);
                                     setSelectedCorrection({
                                       action: "REPLACE",
                                       transaction,
-                                    })
-                                  }
+                                    });
+                                  }}
                                 >
                                   Replace
                                 </Button>
@@ -1885,12 +2025,13 @@ export function FinanceDashboard({
                                   size="sm"
                                   variant="ghost"
                                   disabled={isBusy}
-                                  onClick={() =>
+                                  onClick={() => {
+                                    setDuplicate(null);
                                     setSelectedCorrection({
                                       action: "VOID",
                                       transaction,
-                                    })
-                                  }
+                                    });
+                                  }}
                                 >
                                   Void
                                 </Button>

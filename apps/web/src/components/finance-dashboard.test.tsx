@@ -228,17 +228,25 @@ describe("F13-STS-05 favorites and duplication", () => {
     fireEvent.click(
       view.getByRole("button", { name: "Duplicate Saved lunch" }),
     );
-    const editor = within(
+    const paymentEditor = within(
       view.getByRole("region", { name: "Duplicate transaction" }),
     );
     expect(
-      (editor.getByLabelText("Allocation account 1") as HTMLSelectElement)
-        .value,
+      (
+        paymentEditor.getByLabelText(
+          "Allocation account 1",
+        ) as HTMLSelectElement
+      ).value,
     ).toBe("expense-dining");
-    fireEvent.click(editor.getByRole("button", { name: "Cancel duplicate" }));
+    fireEvent.click(
+      paymentEditor.getByRole("button", { name: "Cancel duplicate" }),
+    );
     expect(post).not.toHaveBeenCalled();
     fireEvent.click(
       view.getByRole("button", { name: "Duplicate Saved income" }),
+    );
+    const editor = within(
+      view.getByRole("region", { name: "Duplicate transaction" }),
     );
     expect(
       (editor.getByLabelText("Allocation account 1") as HTMLSelectElement)

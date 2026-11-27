@@ -59,11 +59,22 @@ model FinancialTransaction {
   allocations     AllocationLine[]
   correction      FinancialTransactionCorrection? @relation("CorrectionOriginal")
   replacementOf   FinancialTransactionCorrection? @relation("CorrectionReplacement")
+  favorite        FinancialTransactionFavorite?
 
   @@unique([id, ownerId])
   @@index([ownerId, transactionDate])
   @@index([sourceAccountId, ownerId])
   @@map("financial_transaction")
+}
+
+model FinancialTransactionFavorite {
+  transactionId String
+  ownerId       String
+  transaction   FinancialTransaction @relation(fields: [transactionId, ownerId], references: [id, ownerId], onDelete: Cascade, map: "financial_favorite_transaction_fkey")
+
+  @@id([transactionId, ownerId], map: "financial_favorite_pkey")
+  @@index([ownerId], map: "financial_favorite_owner_idx")
+  @@map("financial_transaction_favorite")
 }
 
 model FinancialTransactionCorrection {
