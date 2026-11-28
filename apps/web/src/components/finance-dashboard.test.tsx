@@ -1,9 +1,21 @@
 import type { AppRouter } from "@Pockit/api/routers/index";
 import { describe, expect, it, mock } from "bun:test";
-import { fireEvent, render, waitFor } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import {
+  act,
+  fireEvent,
+  render,
+  waitFor,
+  within,
+} from "@testing-library/react";
+import { createTRPCClient, type TRPCLink } from "@trpc/client";
 import type { inferRouterInputs, inferRouterOutputs } from "@trpc/server";
+import { observable } from "@trpc/server/observable";
 
-import { FinanceDashboard } from "./finance-dashboard";
+import { UserFinanceOverview } from "@/routes/_auth/dashboard";
+import { TRPCProvider } from "@/utils/trpc";
+
+import { FinanceDashboard, type HistoryFilters } from "./finance-dashboard";
 
 type Outputs = inferRouterOutputs<AppRouter>;
 type Inputs = inferRouterInputs<AppRouter>;
@@ -18,6 +30,7 @@ const accounts: Account[] = [
     type: "CASH",
     currencyCode: "THB",
     openingBalance: null,
+    openingBalanceEligible: true,
     balance: "0.00",
     categoryTotal: null,
   },
@@ -27,6 +40,7 @@ const accounts: Account[] = [
     type: "LOAN_TAKEN",
     currencyCode: "THB",
     openingBalance: null,
+    openingBalanceEligible: true,
     balance: "0.00",
     categoryTotal: null,
   },
@@ -36,6 +50,7 @@ const accounts: Account[] = [
     type: "INCOME",
     currencyCode: "THB",
     openingBalance: null,
+    openingBalanceEligible: false,
     balance: null,
     categoryTotal: "0.00",
   },
@@ -45,6 +60,7 @@ const accounts: Account[] = [
     type: "EXPENSE",
     currencyCode: "THB",
     openingBalance: null,
+    openingBalanceEligible: false,
     balance: null,
     categoryTotal: "0.00",
   },
@@ -54,6 +70,7 @@ const accounts: Account[] = [
     type: "EXPENSE",
     currencyCode: "THB",
     openingBalance: null,
+    openingBalanceEligible: false,
     balance: null,
     categoryTotal: "0.00",
   },
@@ -103,17 +120,270 @@ const setOpeningBalance = mock(
   (_input: Inputs["finance"]["accounts"]["setOpeningBalance"]) =>
     Promise.resolve(),
 );
+const accountActions = {
+  create: mock(async () => {}),
+  rename: mock(async () => {}),
+  delete: mock(async () => {}),
+};
 const createTransaction = mock(
   (_input: Inputs["finance"]["transactions"]["create"]) => Promise.resolve(),
 );
 
-function renderDashboard() {
+describe("F14-STS-05 all-time category report", () => {
+  function renderReport(categories: Summary["categories"]) {
+    const apply = mock((_input?: HistoryFilters) => {});
+    const dashboard = (historyFiltered: boolean) => (
+      <FinanceDashboard
+        name="Demo User"
+        accounts={accounts}
+        transactions={noTransactions}
+        summary={{ ...summary, categories }}
+        accountActions={accountActions}
+        historySearch={{
+          apply,
+          transactions: noTransactions,
+          filtered: historyFiltered,
+          pending: false,
+          retry: () => {},
+        }}
+        onSetOpeningBalance={setOpeningBalance}
+        onCreateTransaction={createTransaction}
+      />
+    );
+    return { view: render(dashboard(false)), apply, dashboard };
+  }
+
+  it("groups same-name categories and exact totals independently of history filters", () => {
+    const { view, apply, dashboard } = renderReport([
+      {
+        accountId: "income-travel",
+        accountName: "Travel",
+        type: "INCOME",
+        total: "1234.56",
+      },
+      {
+        accountId: "expense-travel",
+        accountName: "Travel",
+        type: "EXPENSE",
+        total: "0.01",
+      },
+      {
+        accountId: "expense-groceries",
+        accountName: "Groceries",
+        type: "EXPENSE",
+        total: "0.00",
+      },
+    ]);
+    const filters = within(
+      view.getByRole("form", { name: "Transaction history filters" }),
+    );
+    const checkReport = () => {
+      const report = within(
+        view.getByRole("region", { name: "All-time category report" }),
+      );
+      const income = within(report.getByRole("table", { name: "Income" }));
+      const expense = within(report.getByRole("table", { name: "Expenses" }));
+      expect(
+        income.getByRole("row", { name: /Travel.*1234\.56/ }),
+      ).toBeTruthy();
+      expect(expense.getByRole("row", { name: /Travel.*0\.01/ })).toBeTruthy();
+      expect(
+        expense.getByRole("row", { name: /Groceries.*0\.00/ }),
+      ).toBeTruthy();
+    };
+    checkReport();
+    fireEvent.input(filters.getByRole("searchbox"), {
+      target: { value: "hidden" },
+    });
+    fireEvent.click(filters.getByRole("button", { name: "Apply filters" }));
+    expect(apply).toHaveBeenLastCalledWith(
+      expect.objectContaining({ search: "hidden" }),
+    );
+    view.rerender(dashboard(true));
+    expect(view.getByText("No transactions match these filters.")).toBeTruthy();
+    checkReport();
+    fireEvent.click(filters.getByRole("button", { name: "Clear filters" }));
+    expect(apply).toHaveBeenLastCalledWith();
+    view.rerender(dashboard(false));
+    checkReport();
+  });
+
+  it("keeps zero rows and describes an unconfigured group", () => {
+    const { view } = renderReport([
+      {
+        accountId: "income-salary",
+        accountName: "Salary",
+        type: "INCOME",
+        total: "0.00",
+      },
+    ]);
+    const report = within(
+      view.getByRole("region", { name: "All-time category report" }),
+    );
+    expect(report.getByRole("row", { name: /Salary.*0\.00/ })).toBeTruthy();
+    expect(report.getByRole("heading", { name: "Expenses" })).toBeTruthy();
+    expect(report.getByText("No Expense categories yet.")).toBeTruthy();
+  });
+});
+
+describe("F13-STS-05 favorites and duplication", () => {
+  const payment: Transaction = {
+    id: "favorite-payment",
+    form: "PAYMENT_CHARGE",
+    sourceAccountId: "card-main",
+    totalAmount: "20.00",
+    transactionDate: "2026-11-27",
+    description: "Saved lunch",
+    allocations: [
+      {
+        id: "lunch-line",
+        accountId: "expense-dining",
+        accountName: "Dining",
+        kind: "EXPENSE",
+        amount: "20.00",
+      },
+    ],
+  };
+  const receipt: Transaction = {
+    ...payment,
+    id: "favorite-receipt",
+    form: "RECEIVE_MONEY",
+    sourceAccountId: "cash-main",
+    description: "Saved income",
+    allocations: [
+      {
+        id: "income-line",
+        accountId: "income-salary",
+        accountName: "Salary",
+        kind: "INCOME",
+        amount: "20.00",
+      },
+    ],
+  };
+
+  function renderFavorites() {
+    const write = mock(
+      async (_input: Inputs["finance"]["transactions"]["setFavorite"]) => {},
+    );
+    const post = mock(
+      async (_input: Inputs["finance"]["transactions"]["create"]) => {},
+    );
+    const dashboard = (favorites: Transaction[]) => (
+      <FinanceDashboard
+        name="Demo User"
+        accounts={accounts}
+        summary={summary}
+        accountActions={accountActions}
+        transactions={[payment, receipt]}
+        onSetOpeningBalance={setOpeningBalance}
+        onCreateTransaction={post}
+        favoriteActions={{
+          transactions: favorites,
+          setFavorite: write,
+          pending: false,
+          loading: false,
+          retry: () => {},
+        }}
+      />
+    );
+    const view = render(dashboard([]));
+    return { view, dashboard, write, post };
+  }
+
+  it("marks and removes a favorite and renders its persisted membership", async () => {
+    const { view, dashboard, write } = renderFavorites();
+    fireEvent.click(view.getByRole("button", { name: "Favorites" }));
+    expect(view.getByText("No favorite transactions.")).toBeTruthy();
+    fireEvent.click(
+      view.getByRole("button", { name: "Show active transactions" }),
+    );
+    await act(async () =>
+      fireEvent.click(
+        view.getByRole("button", { name: "Favorite Saved lunch" }),
+      ),
+    );
+    expect(write).toHaveBeenLastCalledWith({
+      transactionId: payment.id,
+      favorite: true,
+    });
+    view.rerender(dashboard([payment]));
+    fireEvent.click(view.getByRole("button", { name: "Favorites" }));
+    expect(view.queryByText("Saved income")).toBeNull();
+    await act(async () =>
+      fireEvent.click(
+        view.getByRole("button", { name: "Remove favorite Saved lunch" }),
+      ),
+    );
+    expect(write).toHaveBeenLastCalledWith({
+      transactionId: payment.id,
+      favorite: false,
+    });
+  });
+
+  it("prefills both forms and preserves edited values when a duplicate is rejected", async () => {
+    const { view, post } = renderFavorites();
+    fireEvent.click(
+      view.getByRole("button", { name: "Duplicate Saved lunch" }),
+    );
+    const paymentEditor = within(
+      view.getByRole("region", { name: "Duplicate transaction" }),
+    );
+    expect(
+      (
+        paymentEditor.getByLabelText(
+          "Allocation account 1",
+        ) as HTMLSelectElement
+      ).value,
+    ).toBe("expense-dining");
+    fireEvent.click(
+      paymentEditor.getByRole("button", { name: "Cancel duplicate" }),
+    );
+    expect(post).not.toHaveBeenCalled();
+    fireEvent.click(
+      view.getByRole("button", { name: "Duplicate Saved income" }),
+    );
+    const editor = within(
+      view.getByRole("region", { name: "Duplicate transaction" }),
+    );
+    expect(
+      (editor.getByLabelText("Allocation account 1") as HTMLSelectElement)
+        .value,
+    ).toBe("income-salary");
+    const amount = editor.getByLabelText(
+      "Allocation amount 1",
+    ) as HTMLInputElement;
+    fireEvent.input(amount, { target: { value: "12.30" } });
+    fireEvent.input(editor.getByLabelText("Transaction total"), {
+      target: { value: "12.30" },
+    });
+    post.mockRejectedValueOnce(new Error("Please retry"));
+    const save = editor.getByRole("button", { name: "Save duplicate" });
+    await act(async () => fireEvent.click(save));
+    expect(editor.getByRole("alert").textContent).toBe("Please retry");
+    expect(amount.value).toBe("12.30");
+    await act(async () => fireEvent.click(save));
+    expect(post).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        form: "RECEIVE_MONEY",
+        sourceAccountId: "cash-main",
+        totalAmount: "12.30",
+        transactionDate: "2026-11-27",
+      }),
+    );
+    expect(
+      view.queryByRole("region", { name: "Duplicate transaction" }),
+    ).toBeNull();
+  });
+});
+
+function renderDashboard(displayedAccounts = accounts) {
   return render(
     <FinanceDashboard
       name="Demo User"
-      accounts={accounts}
+      accounts={displayedAccounts}
       transactions={noTransactions}
       summary={summary}
+      accountActions={accountActions}
       onSetOpeningBalance={setOpeningBalance}
       onCreateTransaction={createTransaction}
     />,
@@ -204,6 +474,7 @@ describe("finance dashboard", () => {
         accounts={displayedAccounts}
         transactions={displayedTransactions}
         summary={displayedSummary}
+        accountActions={accountActions}
         onSetOpeningBalance={setOpeningBalance}
         onCreateTransaction={createTransaction}
       />,
@@ -233,6 +504,26 @@ describe("finance dashboard", () => {
       expect(setOpeningBalance).toHaveBeenCalledWith({
         accountId: "cash-main",
         amount: "25000.50",
+      });
+    });
+  });
+
+  it("F09-STS-07 records an opening balance for an existing Loan Taken account", async () => {
+    setOpeningBalance.mockClear();
+    const view = renderDashboard();
+    fireEvent.change(view.getByRole("combobox", { name: "Account" }), {
+      target: { value: "card-main" },
+    });
+    fireEvent.input(view.getByLabelText("Opening balance"), {
+      target: { value: "75.10" },
+    });
+    fireEvent.click(
+      view.getByRole("button", { name: /save opening balance/i }),
+    );
+    await waitFor(() => {
+      expect(setOpeningBalance).toHaveBeenCalledWith({
+        accountId: "card-main",
+        amount: "75.10",
       });
     });
   });
@@ -339,6 +630,48 @@ describe("finance dashboard", () => {
     });
   });
 
+  it("F09-STS-09 distinguishes two Cash accounts named Bank and posts to the selected account", async () => {
+    createTransaction.mockClear();
+    const firstBank: Account = {
+      id: "bank-first",
+      name: "Bank",
+      type: "CASH",
+      currencyCode: "THB",
+      openingBalance: "100.00",
+      openingBalanceEligible: false,
+      balance: "100.00",
+      categoryTotal: null,
+    };
+    const otherBank = { ...firstBank, id: "bank-second", balance: "250.00" };
+    const view = renderDashboard([firstBank, otherBank, ...accounts]);
+    fireEvent.click(view.getByRole("button", { name: /income received/i }));
+
+    const picker = view.getByRole("combobox", { name: "Received into" });
+    const firstOption = view.getByRole("option", {
+      name: "Bank · ฿100.00 · bank-first",
+    });
+    const secondOption = view.getByRole("option", {
+      name: "Bank · ฿250.00 · bank-second",
+    });
+    expect(firstOption.getAttribute("value")).toBe(firstBank.id);
+    const selectedId = secondOption.getAttribute("value");
+    expect(selectedId).toBe(otherBank.id);
+    fireEvent.change(picker, { target: { value: selectedId } });
+    fireEvent.input(view.getByLabelText("Amount received"), {
+      target: { value: "15.00" },
+    });
+    fireEvent.input(view.getByLabelText("Transaction date"), {
+      target: { value: "2026-11-07" },
+    });
+    fireEvent.click(view.getByRole("button", { name: "Record income" }));
+
+    await waitFor(() => {
+      expect(createTransaction).toHaveBeenCalledWith(
+        expect.objectContaining({ sourceAccountId: otherBank.id }),
+      );
+    });
+  });
+
   it("records a card repayment from Cash without an Expense allocation", async () => {
     createTransaction.mockClear();
     const view = renderDashboard();
@@ -393,5 +726,554 @@ describe("finance dashboard", () => {
         }) as HTMLButtonElement
       ).disabled,
     ).toBe(true);
+  });
+
+  it("F10-STS-07 posts mixed forms and resets incompatible counterpart selections", async () => {
+    createTransaction.mockClear();
+    const bank = accounts[0];
+    if (!bank) throw new Error("Expected a Cash fixture");
+    const view = renderDashboard([
+      ...accounts,
+      { ...bank, id: "cash-other", name: "Wallet" },
+    ]);
+    const select = (label: string, value: string) => {
+      fireEvent.change(view.getByLabelText(label), { target: { value } });
+    };
+    const enter = (label: string, value: string) => {
+      fireEvent.input(view.getByLabelText(label), { target: { value } });
+    };
+    fireEvent.click(view.getByRole("button", { name: /payment or charge/i }));
+    select("Paid from", "cash-main");
+    enter("Transaction total", "3.00");
+    enter("Transaction date", "2026-11-27");
+    select("Allocation account 1", "expense-dining");
+    select("Allocation type 1", "TRANSFER_TO_CASH");
+    expect(
+      (view.getByLabelText("Allocation account 1") as HTMLSelectElement).value,
+    ).toBe("");
+    expect(view.queryByRole("option", { name: "Dining" })).toBeNull();
+    select("Allocation account 1", "cash-other");
+    enter("Allocation amount 1", "2.00");
+    fireEvent.click(view.getByRole("button", { name: "Add allocation" }));
+    select("Allocation account 2", "expense-dining");
+    enter("Allocation amount 2", "0.50");
+    const payment = view.getByRole("button", {
+      name: "Record payment or charge",
+    }) as HTMLButtonElement;
+    expect(payment.disabled).toBe(true);
+    enter("Allocation amount 2", "1.00");
+    fireEvent.click(payment);
+    await waitFor(() =>
+      expect(createTransaction).toHaveBeenCalledWith(
+        expect.objectContaining({
+          form: "PAYMENT_CHARGE",
+          sourceAccountId: "cash-main",
+          totalAmount: "3.00",
+          allocations: [
+            {
+              kind: "TRANSFER_TO_CASH",
+              accountId: "cash-other",
+              amount: "2.00",
+            },
+            { kind: "EXPENSE", accountId: "expense-dining", amount: "1.00" },
+          ],
+        }),
+      ),
+    );
+
+    fireEvent.click(view.getByRole("button", { name: /^receive money/i }));
+    select("Receiving account", "cash-main");
+    enter("Transaction total", "3.00");
+    enter("Transaction date", "2026-11-27");
+    select("Allocation account 1", "income-salary");
+    enter("Allocation amount 1", "1.00");
+    fireEvent.click(view.getByRole("button", { name: "Add allocation" }));
+    select("Allocation type 2", "TRANSFER_FROM_CASH");
+    select("Allocation account 2", "cash-other");
+    enter("Allocation amount 2", "2.00");
+    const receipt = view.getByRole("button", { name: "Record receipt" });
+    createTransaction.mockRejectedValueOnce(new Error("Cash balance changed"));
+    fireEvent.click(receipt);
+    expect((await view.findByRole("alert")).textContent).toBe(
+      "Cash balance changed",
+    );
+    expect(
+      (view.getByLabelText("Allocation amount 2") as HTMLInputElement).value,
+    ).toBe("2.00");
+    fireEvent.click(receipt);
+    await waitFor(() => {
+      expect(createTransaction).toHaveBeenCalledTimes(3);
+      expect(view.queryByLabelText("Allocation amount 2")).toBeNull();
+      expect(createTransaction).toHaveBeenCalledWith(
+        expect.objectContaining({
+          form: "RECEIVE_MONEY",
+          sourceAccountId: "cash-main",
+          totalAmount: "3.00",
+          allocations: [
+            { kind: "INCOME", accountId: "income-salary", amount: "1.00" },
+            {
+              kind: "TRANSFER_FROM_CASH",
+              accountId: "cash-other",
+              amount: "2.00",
+            },
+          ],
+        }),
+      );
+    });
+  });
+
+  it("F10-STS-09 preserves the Lab 7 quick-card purchase safeguards", () => {
+    const view = renderDashboard();
+    fireEvent.click(view.getByRole("button", { name: /card purchase/i }));
+    const addCategory = view.getByRole("button", {
+      name: "Add category",
+    }) as HTMLButtonElement;
+    expect(addCategory.disabled).toBe(true);
+    fireEvent.change(view.getByLabelText("Expense category 2"), {
+      target: { value: "expense-dining" },
+    });
+    expect(view.getByRole("alert").textContent).toBe(
+      "Use each expense category only once.",
+    );
+    expect(
+      (
+        view.getByRole("button", {
+          name: /record card purchase/i,
+        }) as HTMLButtonElement
+      ).disabled,
+    ).toBe(true);
+    fireEvent.click(addCategory);
+    expect(
+      (view.getByLabelText("Expense category 3") as HTMLSelectElement).value,
+    ).toBe("expense-groceries");
+  });
+
+  it("F11-STS-07 applies and clears history filters without relaxing opening balance eligibility", () => {
+    const posted: Transaction = {
+      id: "history-existing",
+      form: "RECEIVE_MONEY",
+      sourceAccountId: "cash-main",
+      totalAmount: "10.00",
+      transactionDate: "2024-02-29",
+      description: "Already posted salary",
+      allocations: [
+        {
+          id: "history-existing-line",
+          accountId: "income-salary",
+          accountName: "Salary",
+          kind: "INCOME",
+          amount: "10.00",
+        },
+      ],
+    };
+    const apply = mock((_input?: HistoryFilters) => {});
+    const retry = mock(() => {});
+    const base = {
+      name: "Demo User",
+      accounts,
+      transactions: [posted],
+      summary,
+      accountActions,
+      onSetOpeningBalance: setOpeningBalance,
+      onCreateTransaction: createTransaction,
+    };
+    const view = render(
+      <FinanceDashboard
+        {...base}
+        historySearch={{
+          transactions: [posted],
+          apply,
+          retry,
+          filtered: false,
+          pending: false,
+        }}
+      />,
+    );
+    const form = within(
+      view.getByRole("form", { name: "Transaction history filters" }),
+    );
+    expect(view.getByText("Already posted salary")).toBeTruthy();
+    fireEvent.input(form.getByRole("searchbox"), {
+      target: { value: "  salary  " },
+    });
+    fireEvent.input(form.getByLabelText("From"), {
+      target: { value: "2024-03-01" },
+    });
+    fireEvent.input(form.getByLabelText("To"), {
+      target: { value: "2024-02-29" },
+    });
+    fireEvent.change(form.getByLabelText("Form"), {
+      target: { value: "RECEIVE_MONEY" },
+    });
+    fireEvent.change(form.getByLabelText("Account filter"), {
+      target: { value: "income-salary" },
+    });
+    fireEvent.click(form.getByRole("button", { name: "Apply filters" }));
+    expect(form.getByRole("alert").textContent).toContain("start date");
+    expect(apply).not.toHaveBeenCalled();
+
+    fireEvent.input(form.getByLabelText("From"), {
+      target: { value: "2024-02-29" },
+    });
+    fireEvent.click(form.getByRole("button", { name: "Apply filters" }));
+    expect(apply).toHaveBeenCalledWith({
+      search: "salary",
+      fromDate: "2024-02-29",
+      toDate: "2024-02-29",
+      form: "RECEIVE_MONEY",
+      accountId: "income-salary",
+    });
+
+    view.rerender(
+      <FinanceDashboard
+        {...base}
+        historySearch={{
+          transactions: [],
+          apply,
+          retry,
+          filtered: true,
+          pending: true,
+        }}
+      />,
+    );
+    expect(view.getByText("Loading matching transactions…")).toBeTruthy();
+    view.rerender(
+      <FinanceDashboard
+        {...base}
+        historySearch={{
+          transactions: [],
+          apply,
+          retry,
+          filtered: true,
+          pending: false,
+          error: "History temporarily unavailable",
+        }}
+      />,
+    );
+    expect(view.getByRole("alert").textContent).toBe(
+      "History temporarily unavailable",
+    );
+    fireEvent.click(view.getByRole("button", { name: "Retry filters" }));
+    expect(retry).toHaveBeenCalledTimes(1);
+    view.rerender(
+      <FinanceDashboard
+        {...base}
+        historySearch={{
+          transactions: [],
+          apply,
+          retry,
+          filtered: true,
+          pending: false,
+        }}
+      />,
+    );
+    expect(view.getByText("No transactions match these filters.")).toBeTruthy();
+    expect(view.queryByText("Already posted salary")).toBeNull();
+    const openingAccounts = within(
+      view.getByRole("combobox", { name: "Account" }),
+    );
+    expect(
+      openingAccounts.queryByRole("option", { name: "Everyday bank" }),
+    ).toBeNull();
+    expect(
+      openingAccounts.getByRole("option", { name: "Travel card" }),
+    ).toBeTruthy();
+    expect(
+      view.getByRole("region", { name: "Financial overview" }).textContent,
+    ).toContain("฿0.00");
+
+    fireEvent.click(form.getByRole("button", { name: "Clear filters" }));
+    expect(apply.mock.calls.at(-1)).toEqual([]);
+    expect((form.getByRole("searchbox") as HTMLInputElement).value).toBe("");
+    expect(
+      (form.getByLabelText("Account filter") as HTMLSelectElement).value,
+    ).toBe("");
+    view.rerender(
+      <FinanceDashboard
+        {...base}
+        historySearch={{
+          transactions: [posted],
+          apply,
+          retry,
+          filtered: false,
+          pending: false,
+        }}
+      />,
+    );
+    expect(view.getByText("Already posted salary")).toBeTruthy();
+  });
+
+  it("F11-STS-08 refreshes the active filtered history from the normal dashboard after posting", async () => {
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    let posted: Transaction | undefined;
+    const historyQueries: (HistoryFilters | undefined)[] = [];
+    const testLink: TRPCLink<AppRouter> =
+      () =>
+      ({ op }) =>
+        observable((observer) => {
+          switch (op.path) {
+            case "finance.accounts.list":
+              observer.next({ result: { data: accounts } });
+              break;
+            case "finance.summary.get":
+              observer.next({ result: { data: summary } });
+              break;
+            case "finance.transactions.history": {
+              const filter = op.input as HistoryFilters | undefined;
+              historyQueries.push(filter);
+              const matches =
+                !filter?.search || posted?.description?.includes(filter.search);
+              observer.next({
+                result: { data: posted && matches ? [posted] : [] },
+              });
+              break;
+            }
+            case "finance.transactions.create": {
+              const input =
+                op.input as Inputs["finance"]["transactions"]["create"];
+              posted = {
+                ...input,
+                id: "synthetic-new-post",
+                description: input.description ?? null,
+                allocations: input.allocations.map((line, index) => ({
+                  ...line,
+                  id: `synthetic-new-line-${index}`,
+                  accountName: "Salary",
+                })),
+              };
+              observer.next({ result: { data: posted } });
+              break;
+            }
+            default:
+              throw new Error(`Unexpected request: ${op.path}`);
+          }
+          observer.complete();
+        });
+    const trpcClient = createTRPCClient<AppRouter>({ links: [testLink] });
+    const view = render(
+      <QueryClientProvider client={queryClient}>
+        <TRPCProvider trpcClient={trpcClient} queryClient={queryClient}>
+          <UserFinanceOverview
+            name="Demo User"
+            userId="synthetic-history-user"
+          />
+        </TRPCProvider>
+      </QueryClientProvider>,
+    );
+    try {
+      const filters = within(
+        await view.findByRole("form", { name: "Transaction history filters" }),
+      );
+      fireEvent.input(filters.getByRole("searchbox"), {
+        target: { value: "filter refresh" },
+      });
+      fireEvent.click(filters.getByRole("button", { name: "Apply filters" }));
+      await view.findByText("No transactions match these filters.");
+      expect(
+        historyQueries.filter((query) => query?.search === "filter refresh"),
+      ).toHaveLength(1);
+
+      fireEvent.click(view.getByRole("button", { name: /income received/i }));
+      fireEvent.input(view.getByLabelText("Amount received"), {
+        target: { value: "15.00" },
+      });
+      fireEvent.input(view.getByLabelText("Transaction date"), {
+        target: { value: "2024-02-29" },
+      });
+      fireEvent.input(view.getByLabelText("Description"), {
+        target: { value: "filter refresh salary" },
+      });
+      fireEvent.click(view.getByRole("button", { name: "Record income" }));
+      await view.findByText("filter refresh salary");
+      expect(
+        historyQueries.filter((query) => query?.search === "filter refresh"),
+      ).toHaveLength(2);
+    } finally {
+      view.unmount();
+      queryClient.clear();
+    }
+  });
+
+  describe("F12-STS-07 correction controls", () => {
+    const original: Transaction = {
+      id: "original-synthetic-card",
+      form: "PAYMENT_CHARGE",
+      sourceAccountId: "card-main",
+      totalAmount: "20.00",
+      transactionDate: "2026-11-27",
+      description: "Original synthetic expense",
+      allocations: [
+        {
+          id: "original-synthetic-allocation",
+          accountId: "expense-dining",
+          accountName: "Dining",
+          kind: "EXPENSE",
+          amount: "20.00",
+        },
+      ],
+    };
+    const replacement: Transaction = {
+      ...original,
+      id: "replacement-synthetic-card",
+      totalAmount: "12.00",
+      allocations: original.allocations.map((line) => ({
+        ...line,
+        id: "replacement-synthetic-line",
+        amount: "12.00",
+      })),
+    };
+    const props = {
+      name: "Demo User",
+      accounts,
+      summary,
+      accountActions,
+      onSetOpeningBalance: setOpeningBalance,
+      onCreateTransaction: createTransaction,
+    };
+
+    function renderCorrections(transactions: Transaction[]) {
+      const correct = mock(
+        async (_input: Inputs["finance"]["transactions"]["correct"]) => {},
+      );
+      const toggleAudit = mock(() => {});
+      const actions = {
+        correct,
+        pending: false,
+        auditOpen: false,
+        toggleAudit,
+        audit: [],
+        auditPending: false,
+        retryAudit: () => {},
+      };
+      const view = render(
+        <FinanceDashboard
+          {...props}
+          transactions={transactions}
+          correctionActions={actions}
+        />,
+      );
+      return { view, correct, toggleAudit, actions };
+    }
+
+    it("preserves a rejected replacement draft and submits the confirmed changes", async () => {
+      const { view, correct } = renderCorrections([original]);
+      fireEvent.click(view.getByRole("button", { name: "Replace" }));
+      const editor = within(
+        view.getByRole("region", { name: "Transaction correction" }),
+      );
+      const save = editor.getByRole("button", {
+        name: "Save replacement",
+      }) as HTMLButtonElement;
+      expect(save.disabled).toBe(true);
+      expect(
+        (editor.getByLabelText("Transaction total") as HTMLInputElement).value,
+      ).toBe("20.00");
+      expect(
+        (editor.getByLabelText("Allocation account 1") as HTMLSelectElement)
+          .value,
+      ).toBe("expense-dining");
+      fireEvent.input(editor.getByLabelText("Transaction total"), {
+        target: { value: "12.00" },
+      });
+      fireEvent.input(editor.getByLabelText("Allocation amount 1"), {
+        target: { value: "12.00" },
+      });
+      fireEvent.input(editor.getByLabelText("Correction reason"), {
+        target: { value: "Wrong amount" },
+      });
+      fireEvent.click(editor.getByLabelText("Confirm replacement"));
+      correct.mockRejectedValueOnce(new Error("Concurrent correction"));
+      await act(async () => {
+        fireEvent.click(save);
+      });
+      expect(editor.getByRole("alert").textContent).toBe(
+        "Concurrent correction",
+      );
+      expect(
+        (editor.getByLabelText("Allocation amount 1") as HTMLInputElement)
+          .value,
+      ).toBe("12.00");
+      await act(async () => {
+        fireEvent.click(save);
+      });
+      expect(
+        view.queryByRole("region", { name: "Transaction correction" }),
+      ).toBeNull();
+      expect(correct).toHaveBeenLastCalledWith({
+        action: "REPLACE",
+        transactionId: original.id,
+        reason: "Wrong amount",
+        replacement: {
+          form: "PAYMENT_CHARGE",
+          sourceAccountId: "card-main",
+          totalAmount: "12.00",
+          description: original.description,
+          transactionDate: "2026-11-27",
+          allocations: [
+            { kind: "EXPENSE", accountId: "expense-dining", amount: "12.00" },
+          ],
+        },
+      });
+    });
+
+    it("sends a reason with the confirmed void", async () => {
+      const { view, correct } = renderCorrections([replacement]);
+      fireEvent.click(view.getByRole("button", { name: "Void" }));
+      const voidEditor = within(
+        view.getByRole("region", { name: "Transaction correction" }),
+      );
+      fireEvent.input(voidEditor.getByLabelText("Correction reason"), {
+        target: { value: "Duplicate expense" },
+      });
+      fireEvent.click(voidEditor.getByLabelText("Confirm void"));
+      await act(async () => {
+        fireEvent.click(
+          voidEditor.getByRole("button", { name: "Void transaction" }),
+        );
+      });
+      expect(
+        view.queryByRole("region", { name: "Transaction correction" }),
+      ).toBeNull();
+      expect(correct).toHaveBeenLastCalledWith({
+        action: "VOID",
+        transactionId: replacement.id,
+        reason: "Duplicate expense",
+      });
+    });
+
+    it("displays the original and replacement in correction history", () => {
+      const { view, toggleAudit, actions } = renderCorrections([replacement]);
+      fireEvent.click(view.getByRole("button", { name: "Correction history" }));
+      expect(toggleAudit).toHaveBeenCalledTimes(1);
+      view.rerender(
+        <FinanceDashboard
+          {...props}
+          transactions={[]}
+          correctionActions={{
+            ...actions,
+            auditOpen: true,
+            audit: [
+              {
+                id: "audit-synthetic",
+                actorId: "synthetic-actor",
+                action: "REPLACE",
+                reason: "Wrong amount",
+                recordedAt: "2026-11-27T10:00:00.000Z",
+                original,
+                replacement,
+              },
+            ],
+          }}
+        />,
+      );
+      const audit = within(
+        view.getByRole("list", { name: "Transaction correction history" }),
+      );
+      expect(audit.getByText("Replaced · Wrong amount")).toBeTruthy();
+      expect(audit.getByText(/Original.*฿20.00/)).toBeTruthy();
+      expect(audit.getByText(/Replacement.*฿12.00/)).toBeTruthy();
+    });
   });
 });

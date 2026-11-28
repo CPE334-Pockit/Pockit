@@ -3,10 +3,14 @@ import { Card, CardContent } from "@Pockit/ui/components/card";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { LoaderCircle, RefreshCw } from "lucide-react";
+import { useState } from "react";
 import { toast } from "sonner";
 
 import { AdminUserManagement } from "@/components/admin-user-management";
-import { FinanceDashboard } from "@/components/finance-dashboard";
+import {
+  FinanceDashboard,
+  type HistoryFilters,
+} from "@/components/finance-dashboard";
 import { useTRPC } from "@/utils/trpc";
 import { userScopedQueryKey } from "@/utils/user-scoped-query-key";
 
@@ -22,7 +26,9 @@ function RouteComponent() {
     return <AdministratorAccess />;
   }
   if (actor?.role === "User") {
-    return <UserFinanceOverview name={actor.name} userId={actor.id} />;
+    return (
+      <UserFinanceOverview key={actor.id} name={actor.name} userId={actor.id} />
+    );
   }
 
   return (
@@ -81,7 +87,7 @@ function AdministratorAccess() {
   );
 }
 
-function UserFinanceOverview({
+export function UserFinanceOverview({
   name,
   userId,
 }: {
@@ -90,6 +96,8 @@ function UserFinanceOverview({
 }) {
   const trpc = useTRPC();
   const queryClient = useQueryClient();
+  const [appliedHistory, setAppliedHistory] = useState<HistoryFilters>();
+  const [auditOpen, setAuditOpen] = useState(false);
   const accountsQuery = trpc.finance.accounts.list.queryOptions();
   const historyQuery = trpc.finance.transactions.history.queryOptions();
   const summaryQuery = trpc.finance.summary.get.queryOptions();
@@ -101,12 +109,40 @@ function UserFinanceOverview({
     ...historyQuery,
     queryKey: userScopedQueryKey(historyQuery.queryKey, userId),
   });
+  const filteredHistoryOptions =
+    trpc.finance.transactions.history.queryOptions(appliedHistory);
+  const filteredHistory = useQuery({
+    ...filteredHistoryOptions,
+    queryKey: userScopedQueryKey(filteredHistoryOptions.queryKey, userId),
+    enabled: appliedHistory !== undefined,
+  });
   const summary = useQuery({
     ...summaryQuery,
     queryKey: userScopedQueryKey(summaryQuery.queryKey, userId),
   });
+  const auditOptions =
+    trpc.finance.transactions.correctionHistory.queryOptions();
+  const audit = useQuery({
+    ...auditOptions,
+    queryKey: userScopedQueryKey(auditOptions.queryKey, userId),
+    enabled: auditOpen,
+  });
+  const favoritesOptions = trpc.finance.transactions.favorites.queryOptions();
+  const favorites = useQuery({
+    ...favoritesOptions,
+    queryKey: userScopedQueryKey(favoritesOptions.queryKey, userId),
+  });
 
   const refreshFinance = () => queryClient.invalidateQueries();
+  const createAccount = useMutation(
+    trpc.finance.accounts.create.mutationOptions({ onSuccess: refreshFinance }),
+  );
+  const renameAccount = useMutation(
+    trpc.finance.accounts.rename.mutationOptions({ onSuccess: refreshFinance }),
+  );
+  const deleteAccount = useMutation(
+    trpc.finance.accounts.delete.mutationOptions({ onSuccess: refreshFinance }),
+  );
   const openingBalance = useMutation(
     trpc.finance.accounts.setOpeningBalance.mutationOptions({
       onSuccess: async () => {
@@ -122,6 +158,23 @@ function UserFinanceOverview({
         toast.success("Transaction recorded");
         await refreshFinance();
       },
+      onError: (error) => toast.error(error.message),
+    }),
+  );
+  const correction = useMutation(
+    trpc.finance.transactions.correct.mutationOptions({
+      onSuccess: async () => {
+        toast.success("Correction recorded");
+        await refreshFinance();
+      },
+    }),
+  );
+  const setFavorite = useMutation(
+    trpc.finance.transactions.setFavorite.mutationOptions({
+      onSuccess: () =>
+        queryClient.invalidateQueries({
+          queryKey: userScopedQueryKey(favoritesOptions.queryKey, userId),
+        }),
       onError: (error) => toast.error(error.message),
     }),
   );
@@ -145,7 +198,40 @@ function UserFinanceOverview({
       name={name}
       accounts={accounts.data}
       transactions={history.data}
+      historySearch={{
+        apply: setAppliedHistory,
+        transactions: appliedHistory
+          ? (filteredHistory.data ?? [])
+          : history.data,
+        filtered: appliedHistory !== undefined,
+        pending: appliedHistory !== undefined && filteredHistory.isPending,
+        error: appliedHistory ? filteredHistory.error?.message : undefined,
+        retry: () => void filteredHistory.refetch(),
+      }}
+      correctionActions={{
+        correct: correction.mutateAsync,
+        pending: correction.isPending,
+        auditOpen,
+        toggleAudit: () => setAuditOpen((current) => !current),
+        audit: audit.data ?? [],
+        auditPending: audit.isPending,
+        auditError: audit.error?.message,
+        retryAudit: () => void audit.refetch(),
+      }}
+      favoriteActions={{
+        transactions: favorites.data ?? [],
+        setFavorite: setFavorite.mutateAsync,
+        pending: setFavorite.isPending,
+        loading: favorites.isPending,
+        error: favorites.error?.message,
+        retry: () => void favorites.refetch(),
+      }}
       summary={summary.data}
+      accountActions={{
+        create: createAccount.mutateAsync,
+        rename: renameAccount.mutateAsync,
+        delete: deleteAccount.mutateAsync,
+      }}
       openingBalancePending={openingBalance.isPending}
       transactionPending={transaction.isPending}
       onSetOpeningBalance={async (input) => {
