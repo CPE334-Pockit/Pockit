@@ -6,7 +6,7 @@
 \newcommand{\gh}[2]{\href{https://github.com/CPE334-Pockit/Pockit/#1}{#2}}
 \begin{document}
 \begin{center}\Large Lab 7: Sprint 1 maintenance\end{center}
-Pockit, Theme 7. Guntee Doungmanee (67070501003) and Polwarit Watthanahemmarat (67070501067). \gh{}{Repository}.
+Pockit, Theme 7. Guntee Doungmanee (67070501003) and Polwarit Watthanahemmarat (67070501067).\par \gh{}{Repository}.
 \tableofcontents
 \section{Part A: Change and impact}
 \begin{tabularx}{\linewidth}{lX}
@@ -19,12 +19,32 @@ Deployed revision & \texttt{s4b043a2c-00012-l4m}. \href{https://s4b043a2c-4d7hbs
 FEAT-06, FR-06, FR-08, and F6-AC-01/04: the old rule allowed the same Expense account on multiple lines. The new rule allows each Expense account once per card purchase. A single line and a split across distinct accounts still work. The form retains the draft and offers unused categories. The API rejects duplicates before saving. Exact totals, role and owner checks, repayment and salary flows stay unchanged. Historical rows remain readable; no migration is required.
 
 \gh{pull/95}{PR 95} preserves the reviewed contract before implementation. See \gh{issues/79\#issuecomment-7223322148}{course announcement}: separate course approval was waived, not granted for this rule specifically.
+\subsection{Impact and review record}
+\begin{tabularx}{\linewidth}{lX}
+Trace & Contract and verification \\\hline
+FR-06/08, F6-AC-01/04 & Old: valid Expense lines sum to the purchase total. Revised: each Expense account appears at most once per card purchase. STS-CARD-07 keeps the single-line case; STS-CARD-08 rejects duplicates. \\
+System SDS 4.1, 4.3, 5, 6 & Reject before atomic persistence. The form keeps the draft and lets the owner correct it (STS-CARD-09). Historical duplicate lines still count toward category totals (STS-CARD-10). No migration. STS-AUTHZ-05/08 and STS-CARD-03 retain the ownership, Administrator and repayment checks. \\
+\end{tabularx}
+
+On 26 November at 15:30 UTC, Polwarit reviewed \texttt{bf94b39}: ``The baseline router deduplicates account IDs for lookup and still writes the original allocation rows''. He requested tests for form recovery and historical read-back; revision \texttt{be70f44} added them. PR 95 merged at 15:48 UTC. A separate review of the revised commit was not found.
+
 \section{Part B: Implementation and release}
 \textbf{RED, E1.} With the router from \texttt{027eb3f}, run \texttt{bun test src/routers/finance.test.ts -t} \texttt{"rejects repeated purchase categories"} in the API package. Submit a THB 10.00 purchase with THB 4.00 and THB 6.00 in the same category. Expected a rejection; Bun reported ``Received promise that resolved''. Zero passed and one failed. \gh{issues/80\#issuecomment-7214459248}{Original output excerpt}.
 
 \textbf{GREEN, E2.} At \texttt{a5667e9}, the API suite passed 10 tests on disposable PostgreSQL and the dashboard passed 7. The assertions check rejection with no balance or history changes, correction in the same draft, and historical read-back. \gh{pull/97}{PR 97}. At \texttt{fafd392}, the dashboard passed 8 tests after the Add category follow-up. \gh{pull/99}{PR 99}.
 
 \textbf{Release, E3.} Polwarit approved \gh{pull/102}{release PR 102}. \gh{actions/runs/46131190313}{Exact-commit CI} and \gh{actions/runs/46131190356}{GCP deployment} succeeded. At 09:43 UTC on 28 November 2026 the new revision served 100\% of traffic. Public web and health/readiness checks passed; readiness reported database connected. A later readiness request returned HTTP 503; a retry returned HTTP 200 with the database connected at 10:45 UTC. The cause was not verified. Authenticated checks of the changed rule and preserved behavior on GCP are pending.
+\subsection{Selected implementation and test excerpts}
+\begin{verbatim}
++ if (source.type === "LOAN_TAKEN" &&
++     hasRepeatedExpenseAccount(allocations)) {
++   return badRequest("Use each expense category only once.");
++ }
+RED: Expected promise that rejects
+     Received promise that resolved
+GREEN: 10 pass, 0 fail (finance suite)
+\end{verbatim}
+The API test asserts \texttt{BAD\_REQUEST}, checks the duplicate-category message, and compares balance, summary and history snapshots. The final CI ran \texttt{bun run test} with 105 passes and no failures. The release deploy log reports ``Released commit: ad04c17'' and readiness with the database connected.
 \section{Part C: Metrics}
 \begin{tabularx}{\linewidth}{lX}
 Metric & Value and scope as of 28 November 2026\\\hline
@@ -36,12 +56,30 @@ Deployment traffic & 100\% to revision \texttt{s4b043a2c-00012-l4m}, from E3 dep
 \end{tabularx}
 
 CI and deployment succeeded, but those results do not prove the signed-in card flow on GCP. Before grading handoff, Guntee will record a duplicate rejection and a valid split on the serving revision, then verify unchanged balances and authorization behavior where applicable.
+\subsection{Metric source rows}
+Merge log through 28 November 2026 at 09:43 UTC. Times below are UTC.
+\begin{tabularx}{\linewidth}{lXl}
+PR & Merged & Target \\\hline
+95 & 26 November, 15:48 & lab7 \\
+97 & 26 November, 18:52 & lab7 \\
+99 & 27 November, 07:01 & lab7 \\
+102 & 28 November, 09:35 & main \\
+\end{tabularx}
+
+E3 test run on 28 November at 09:36 UTC. \texttt{bun run test} logged Web 30/0, Server 22/0, API 51/0 and DB 2/0 (pass/fail). No skipped count was reported in the selected summaries.
 \section{Part D: Readiness and retrospective}
 \textbf{NOT READY for grading handoff.} The deployed version and public smoke checks are recorded in E3. No release-blocking defect is confirmed. Review and automated regressions passed; live signed-in checks and private delivery of synthetic credentials are pending. Use email for credentials, never GitHub or this PDF. Setup and run instructions are in the repository README.
 
 \begin{tabularx}{\linewidth}{lX}
 Debt & Impact, priority and action\\\hline
 Live evidence gap & A passing build does not show the signed-in workflow. High for grading; Guntee will add live checks and record their result.\\
+\end{tabularx}
+
+\begin{tabularx}{\linewidth}{lX}
+Check & Result and next action \\\hline
+Defects & No confirmed blocking defect. Readiness returned 503 once, then recovered; cause unknown. \\
+Live tests & Public smoke passed. Duplicate rejection, valid split, isolation and Administrator denial on GCP remain pending; Guntee to verify with synthetic accounts. \\
+Secrets & No credentials in the PDF. Private email handoff pending; Guntee to send before grading. \\
 \end{tabularx}
 
 \textbf{Helped:} the same rejection test exposed old behavior and verified the fix. \textbf{Hurt:} the release branch conflicted with changes on main. \textbf{Change:} sync the release branch before review and repeat the affected tests after conflict resolution.
