@@ -564,6 +564,46 @@ describe("finance dashboard", () => {
     });
   });
 
+  it("adds an unused category and stops when all are selected", () => {
+    const view = renderDashboard();
+    fireEvent.click(view.getByRole("button", { name: /card purchase/i }));
+    fireEvent.click(view.getByRole("button", { name: /remove category 2/i }));
+    const add = view.getByRole("button", { name: /add category/i });
+    fireEvent.click(add);
+    expect(
+      (view.getByLabelText("Expense category 2") as HTMLSelectElement).value,
+    ).toBe("expense-groceries");
+    expect(add.hasAttribute("disabled")).toBe(true);
+  });
+
+  it("lets the owner correct a duplicate purchase category", async () => {
+    createTransaction.mockClear();
+    const view = renderDashboard();
+    fireEvent.click(view.getByRole("button", { name: /card purchase/i }));
+    fireEvent.input(view.getByLabelText("Purchase total"), {
+      target: { value: "10.00" },
+    });
+    const [first, second] = view.getAllByLabelText("Allocated amount");
+    if (!first || !second) throw new Error("Expected two allocation fields");
+    fireEvent.input(first, { target: { value: "4.00" } });
+    fireEvent.input(second, { target: { value: "6.00" } });
+    fireEvent.input(view.getByLabelText("Transaction date"), {
+      target: { value: "2026-11-07" },
+    });
+    const category = view.getByLabelText("Expense category 2");
+    fireEvent.change(category, { target: { value: "expense-dining" } });
+    const save = view.getByRole("button", {
+      name: /record card purchase/i,
+    });
+    expect(save.hasAttribute("disabled")).toBe(true);
+    expect(
+      view.getByText("Use each expense category only once."),
+    ).toBeDefined();
+    fireEvent.change(category, { target: { value: "expense-groceries" } });
+    fireEvent.click(save);
+    await waitFor(() => expect(createTransaction).toHaveBeenCalledTimes(1));
+  });
+
   it("records salary income into the selected Cash account", async () => {
     createTransaction.mockClear();
     const view = renderDashboard();

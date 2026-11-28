@@ -2,7 +2,7 @@ name: CI and Docker
 
 on:
   pull_request:
-    branches: [lab5, lab6, staging-2, staging-3, main]
+    branches: [lab5, lab6, lab7, staging-2, staging-3, main]
   push:
     branches: [main]
 
